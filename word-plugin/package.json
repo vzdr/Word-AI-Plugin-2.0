@@ -1,0 +1,37 @@
+{
+  "name": "word-ai-plugin",
+  "version": "1.0.0",
+  "description": "AI-powered Word plugin for context-based text completion",
+  "main": "index.js",
+  "scripts": {
+    "build": "webpack --mode production",
+    "build:dev": "webpack --mode development",
+    "dev-server": "webpack serve --mode development",
+    "start": "office-addin-debugging start manifest.xml desktop",
+    "stop": "office-addin-debugging stop manifest.xml",
+    "validate": "office-addin-manifest validate manifest.xml"
+  },
+  "dependencies": {
+    "@fluentui/react": "^8.119.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/office-js": "^1.0.382",
+    "@types/react": "^18.2.45",
+    "@types/react-dom": "^18.2.18",
+    "copy-webpack-plugin": "^11.0.0",
+    "file-loader": "^6.2.0",
+    "html-webpack-plugin": "^5.6.0",
+    "office-addin-cli": "^1.5.15",
+    "office-addin-debugging": "^5.0.17",
+    "office-addin-dev-certs": "^1.13.2",
+    "office-addin-manifest": "^1.13.2",
+    "source-map-loader": "^5.0.0",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.3.3",
+    "webpack": "^5.89.0",
+    "webpack-cli": "^5.1.4",
+    "webpack-dev-server": "^4.15.1"
+  }
+}
