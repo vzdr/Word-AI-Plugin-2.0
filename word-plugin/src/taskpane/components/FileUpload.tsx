@@ -1,15 +1,20 @@
 import * as React from 'react';
 import { useState, useRef } from 'react';
 import styles from './FileUpload.module.css';
+import { UploadedFile as BaseUploadedFile } from '../../types/file';
+import {
+  validateFiles,
+  formatFileSize,
+  getFileExtension,
+  MAX_FILE_SIZE,
+  MAX_TOTAL_SIZE,
+  SUPPORTED_FILE_TYPES,
+  calculateTotalSize
+} from '../../utils/fileValidation';
 
-// Placeholder types - Stream B will provide proper validation types
-export interface UploadedFile {
-  id: string;
-  file: File;
-  name: string;
-  size: number;
-  type: string;
-  uploadedAt: number;
+// Extended version that includes the File object for component use
+export interface UploadedFile extends BaseUploadedFile {
+  file?: File; // Optional File object for accessing file data
 }
 
 export interface FileUploadProps {
@@ -24,100 +29,64 @@ export interface FileUploadProps {
 const FileUpload: React.FC<FileUploadProps> = ({
   files,
   onFilesChange,
-  maxFileSize = 10 * 1024 * 1024, // 10MB
-  maxTotalSize = 50 * 1024 * 1024, // 50MB
-  acceptedTypes = ['pdf', 'docx', 'txt', 'md', 'csv'],
+  maxFileSize = MAX_FILE_SIZE,
+  maxTotalSize = MAX_TOTAL_SIZE,
+  acceptedTypes = SUPPORTED_FILE_TYPES,
   onError
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
 
-  // Calculate total size of uploaded files
-  const getTotalSize = (fileList: UploadedFile[]): number => {
-    return fileList.reduce((total, file) => total + file.size, 0);
-  };
-
-  // Format file size for display
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
-  };
-
-  // Get file extension
-  const getFileExtension = (filename: string): string => {
-    const parts = filename.split('.');
-    return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
-  };
-
-  // Process files and add to list (validation will be handled by Stream B utilities)
+  // Process files and add to list using Stream B validation utilities
   const processFiles = (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
-
-    const newFiles: UploadedFile[] = [];
-    const errors: string[] = [];
 
     // Convert FileList to array
     const fileArray = Array.from(fileList);
 
-    for (const file of fileArray) {
-      const extension = getFileExtension(file.name);
-
-      // Basic client-side validation (Stream B will provide more robust validation)
-      if (!acceptedTypes.includes(extension)) {
-        errors.push(`${file.name}: File type .${extension} is not supported. Accepted types: ${acceptedTypes.join(', ')}`);
-        continue;
-      }
-
-      if (file.size > maxFileSize) {
-        errors.push(`${file.name}: File size (${formatFileSize(file.size)}) exceeds maximum (${formatFileSize(maxFileSize)})`);
-        continue;
-      }
-
-      // Check if file already exists
+    // Check for duplicates
+    const duplicates: string[] = [];
+    const nonDuplicateFiles = fileArray.filter(file => {
       const isDuplicate = files.some(f => f.name === file.name && f.size === file.size);
       if (isDuplicate) {
-        errors.push(`${file.name}: File already uploaded`);
-        continue;
+        duplicates.push(`${file.name}: File already uploaded`);
       }
+      return !isDuplicate;
+    });
 
-      // Create uploaded file object
-      const uploadedFile: UploadedFile = {
-        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        file,
-        name: file.name,
-        size: file.size,
-        type: extension,
-        uploadedAt: Date.now()
-      };
+    // Use validation utilities from Stream B
+    const validationResult = validateFiles(nonDuplicateFiles, {
+      maxFileSize,
+      maxTotalSize,
+      allowedTypes: acceptedTypes as any,
+      existingFiles: files
+    });
 
-      newFiles.push(uploadedFile);
-    }
-
-    // Check total size
-    const currentTotalSize = getTotalSize(files);
-    const newTotalSize = getTotalSize(newFiles);
-    const combinedTotalSize = currentTotalSize + newTotalSize;
-
-    if (combinedTotalSize > maxTotalSize) {
-      errors.push(`Total size (${formatFileSize(combinedTotalSize)}) would exceed maximum (${formatFileSize(maxTotalSize)})`);
-      if (onError) {
-        onError(errors.join('\n'));
-      }
-      return;
-    }
+    // Collect all errors
+    const allErrors: string[] = [...duplicates, ...validationResult.errors];
 
     // Report errors if any
-    if (errors.length > 0 && onError) {
-      onError(errors.join('\n'));
+    if (allErrors.length > 0 && onError) {
+      onError(allErrors.join('\n'));
     }
 
-    // Add valid files to the list
-    if (newFiles.length > 0) {
-      onFilesChange([...files, ...newFiles]);
+    // Create UploadedFile objects from valid files
+    if (validationResult.validFiles.length > 0) {
+      const newUploadedFiles: UploadedFile[] = validationResult.validFiles.map(file => {
+        const extension = getFileExtension(file.name);
+        return {
+          id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          file,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          extension,
+          uploadedAt: Date.now()
+        };
+      });
+
+      onFilesChange([...files, ...newUploadedFiles]);
     }
   };
 
@@ -176,7 +145,7 @@ const FileUpload: React.FC<FileUploadProps> = ({
   };
 
   // Get icon for file type
-  const getFileIcon = (fileType: string): string => {
+  const getFileIcon = (extension: string): string => {
     const iconMap: { [key: string]: string } = {
       pdf: '📄',
       docx: '📝',
@@ -184,10 +153,12 @@ const FileUpload: React.FC<FileUploadProps> = ({
       md: '📋',
       csv: '📊'
     };
-    return iconMap[fileType] || '📎';
+    // Remove leading dot if present
+    const ext = extension.startsWith('.') ? extension.substring(1) : extension;
+    return iconMap[ext] || '📎';
   };
 
-  const totalSize = getTotalSize(files);
+  const totalSize = calculateTotalSize(files);
   const remainingSize = maxTotalSize - totalSize;
 
   return (
@@ -239,11 +210,11 @@ const FileUpload: React.FC<FileUploadProps> = ({
           {files.map((file) => (
             <div key={file.id} className={styles.fileItem}>
               <div className={styles.fileInfo}>
-                <span className={styles.fileIcon}>{getFileIcon(file.type)}</span>
+                <span className={styles.fileIcon}>{getFileIcon(file.extension)}</span>
                 <div className={styles.fileDetails}>
                   <span className={styles.fileName}>{file.name}</span>
                   <span className={styles.fileMeta}>
-                    {formatFileSize(file.size)} • {file.type.toUpperCase()}
+                    {formatFileSize(file.size)} • {file.extension.toUpperCase()}
                   </span>
                 </div>
               </div>
