@@ -40,9 +40,9 @@ export {
 
 export type { ChunkOptions } from '../utils/textChunker';
 
-// Specific parser exports will be added by other streams:
-// - Stream B will add: export { PDFParser } from './pdfParser';
-// - Stream B will add: export { DOCXParser } from './docxParser';
-// - Stream C will add: export { TextParser } from './textParser';
-// - Stream C will add: export { MarkdownParser } from './markdownParser';
-// - Stream C will add: export { CSVParser } from './csvParser';
+// Parser implementations
+export { PdfParser } from './pdfParser';
+export { DocxParser } from './docxParser';
+export { TextParser } from './textParser';
+export { MarkdownParser } from './markdownParser';
+export { CsvParser } from './csvParser';
