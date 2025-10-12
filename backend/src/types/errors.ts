@@ -40,6 +40,14 @@ export enum ErrorCode {
   FILE_TOO_LARGE = 'FILE_TOO_LARGE',
   INVALID_FILE_TYPE = 'INVALID_FILE_TYPE',
   FILE_UPLOAD_ERROR = 'FILE_UPLOAD_ERROR',
+
+  // Parser errors
+  PARSER_ERROR = 'PARSER_ERROR',
+  UNSUPPORTED_FILE_TYPE = 'UNSUPPORTED_FILE_TYPE',
+  FILE_CORRUPTED = 'FILE_CORRUPTED',
+  PASSWORD_PROTECTED = 'PASSWORD_PROTECTED',
+  PARSER_TIMEOUT = 'PARSER_TIMEOUT',
+  EXTRACTION_ERROR = 'EXTRACTION_ERROR',
 }
 
 /**
@@ -133,5 +141,65 @@ export class AIServiceError extends AppError {
   constructor(message: string, details?: any) {
     super(message, 503, ErrorCode.AI_SERVICE_ERROR, details);
     Object.setPrototypeOf(this, AIServiceError.prototype);
+  }
+}
+
+/**
+ * Parser error class - base class for all parser-related errors
+ */
+export class ParserError extends AppError {
+  constructor(message: string, code: string = ErrorCode.PARSER_ERROR, details?: any) {
+    super(message, 500, code, details);
+    Object.setPrototypeOf(this, ParserError.prototype);
+  }
+}
+
+/**
+ * Unsupported file type error
+ */
+export class UnsupportedFileTypeError extends ParserError {
+  constructor(fileType: string, details?: any) {
+    super(`Unsupported file type: ${fileType}`, ErrorCode.UNSUPPORTED_FILE_TYPE, details);
+    Object.setPrototypeOf(this, UnsupportedFileTypeError.prototype);
+  }
+}
+
+/**
+ * Corrupted file error
+ */
+export class FileCorruptedError extends ParserError {
+  constructor(message: string = 'File is corrupted or invalid', details?: any) {
+    super(message, ErrorCode.FILE_CORRUPTED, details);
+    Object.setPrototypeOf(this, FileCorruptedError.prototype);
+  }
+}
+
+/**
+ * Password protected file error
+ */
+export class PasswordProtectedError extends ParserError {
+  constructor(message: string = 'File is password protected', details?: any) {
+    super(message, ErrorCode.PASSWORD_PROTECTED, details);
+    Object.setPrototypeOf(this, PasswordProtectedError.prototype);
+  }
+}
+
+/**
+ * Parser timeout error
+ */
+export class ParserTimeoutError extends ParserError {
+  constructor(message: string = 'Parser operation timed out', details?: any) {
+    super(message, ErrorCode.PARSER_TIMEOUT, details);
+    Object.setPrototypeOf(this, ParserTimeoutError.prototype);
+  }
+}
+
+/**
+ * Extraction error - when text/data extraction fails
+ */
+export class ExtractionError extends ParserError {
+  constructor(message: string = 'Failed to extract content from file', details?: any) {
+    super(message, ErrorCode.EXTRACTION_ERROR, details);
+    Object.setPrototypeOf(this, ExtractionError.prototype);
   }
 }
