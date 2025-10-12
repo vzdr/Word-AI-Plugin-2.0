@@ -2,6 +2,7 @@ import * as React from 'react';
 import './App.css';
 import InlineContext from './components/InlineContext';
 import FileUpload, { UploadedFile } from './components/FileUpload';
+import Settings, { SettingsValues } from './components/Settings';
 import {
   getTextSelection,
   SelectionLocation
@@ -16,7 +17,15 @@ interface AppState {
   inlineContext: string;
   uploadedFiles: UploadedFile[];
   fileUploadError: string | null;
+  settings: SettingsValues;
 }
+
+// Default settings
+const DEFAULT_SETTINGS: SettingsValues = {
+  model: 'gpt-3.5-turbo',
+  temperature: 0.7,
+  maxTokens: 2000
+};
 
 class App extends React.Component<{}, AppState> {
   constructor(props: {}) {
@@ -29,7 +38,8 @@ class App extends React.Component<{}, AppState> {
       isProcessing: false,
       inlineContext: '',
       uploadedFiles: [],
-      fileUploadError: null
+      fileUploadError: null,
+      settings: DEFAULT_SETTINGS
     };
   }
 
@@ -78,6 +88,14 @@ class App extends React.Component<{}, AppState> {
     this.setState({ fileUploadError: error });
   };
 
+  handleSettingsChange = (settings: SettingsValues) => {
+    this.setState({ settings });
+  };
+
+  handleSettingsReset = () => {
+    this.setState({ settings: DEFAULT_SETTINGS });
+  };
+
   getLocationBadgeClass = (location: SelectionLocation): string => {
     const baseClass = 'location-badge';
     switch (location) {
@@ -104,7 +122,8 @@ class App extends React.Component<{}, AppState> {
       inlineContext,
       isProcessing,
       uploadedFiles,
-      fileUploadError
+      fileUploadError,
+      settings
     } = this.state;
 
     return (
@@ -174,6 +193,15 @@ class App extends React.Component<{}, AppState> {
                 {fileUploadError}
               </div>
             )}
+          </section>
+
+          <section className="settings-section">
+            <h2>Settings</h2>
+            <Settings
+              settings={settings}
+              onSettingsChange={this.handleSettingsChange}
+              onReset={this.handleSettingsReset}
+            />
           </section>
 
           <section className="actions-section">
