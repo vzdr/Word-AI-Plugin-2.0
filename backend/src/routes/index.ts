@@ -6,6 +6,7 @@
 
 import { Router } from 'express';
 import healthRouter from './health';
+import parserRouter from './parser';
 
 const router = Router();
 
@@ -14,6 +15,14 @@ const router = Router();
  * GET /api/health
  */
 router.use('/health', healthRouter);
+
+/**
+ * File parser endpoint
+ * POST /api/parser/parse
+ * GET /api/parser/supported
+ * POST /api/parser/validate
+ */
+router.use('/parser', parserRouter);
 
 /**
  * Future routes will be added here:
