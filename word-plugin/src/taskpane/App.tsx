@@ -9,6 +9,13 @@ import {
   getTextSelection,
   SelectionLocation
 } from '../utils/textSelection';
+import { replaceSelectedText } from '../utils/textReplacement';
+import {
+  askAI,
+  isAIServiceError,
+  getUserFriendlyErrorMessage,
+  AIServiceErrorType
+} from '../services/aiService';
 
 interface AppState {
   selectedText: string;
@@ -107,54 +114,137 @@ class App extends React.Component<{}, AppState> {
   };
 
   handleAskAI = async () => {
+    // Validate we have selected text
+    if (!this.state.selectedText || this.state.selectedText.trim().length === 0) {
+      this.setState({
+        error: 'Please select text in the document first',
+        errorSeverity: 'warning'
+      });
+      return;
+    }
+
     // Clear previous error and response
     this.setState({
       error: null,
       aiResponse: null,
       isProcessing: true,
-      processingMessage: 'Processing your request...'
+      processingMessage: 'Sending request to AI service...'
     });
 
     try {
-      // Placeholder for AI integration (Stream C will implement)
-      // Simulate processing for now
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Call AI service with selected text, context, files, and settings
+      const response = await askAI(
+        this.state.selectedText,
+        this.state.inlineContext,
+        this.state.uploadedFiles,
+        this.state.settings
+      );
 
-      // Placeholder response
+      // Success - store the AI response
       this.setState({
         isProcessing: false,
-        aiResponse: 'AI response will be integrated in Stream C',
-        processingMessage: ''
+        aiResponse: response.response,
+        processingMessage: '',
+        error: null
       });
     } catch (error) {
+      // Determine error severity based on error type
+      let severity: ErrorSeverity = 'error';
+      let errorMessage: string;
+
+      if (isAIServiceError(error)) {
+        errorMessage = getUserFriendlyErrorMessage(error);
+
+        // Service unavailable is more of a warning (user can retry)
+        if (error.type === AIServiceErrorType.SERVICE_UNAVAILABLE) {
+          severity = 'warning';
+        }
+        // Network/timeout errors are also warnings (temporary issues)
+        else if (
+          error.type === AIServiceErrorType.NETWORK_ERROR ||
+          error.type === AIServiceErrorType.TIMEOUT
+        ) {
+          severity = 'warning';
+        }
+      } else {
+        errorMessage = error instanceof Error ? error.message : 'Failed to process AI request';
+      }
+
       this.setState({
         isProcessing: false,
         processingMessage: '',
-        error: error instanceof Error ? error.message : 'Failed to process request',
-        errorSeverity: 'error'
+        error: errorMessage,
+        errorSeverity: severity
       });
     }
   };
 
   handleReplaceText = async () => {
-    if (!this.state.aiResponse) return;
+    if (!this.state.aiResponse) {
+      this.setState({
+        error: 'No AI response available to replace',
+        errorSeverity: 'warning'
+      });
+      return;
+    }
+
+    // Validate that we still have selected text
+    if (!this.state.selectedText) {
+      this.setState({
+        error: 'Please select text in the document first',
+        errorSeverity: 'warning'
+      });
+      return;
+    }
 
     this.setState({
       isProcessing: true,
-      processingMessage: 'Replacing text in document...'
+      processingMessage: 'Replacing text in document...',
+      error: null
     });
 
     try {
-      // Placeholder for text replacement (will be implemented later)
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Perform text replacement with formatting preservation
+      const result = await replaceSelectedText(this.state.aiResponse, {
+        preserveFormatting: true,
+        validateSelection: true,
+        selectAfterReplace: false,
+      });
 
+      if (!result.success) {
+        // Replacement failed - show error
+        this.setState({
+          isProcessing: false,
+          processingMessage: '',
+          error: result.error || 'Failed to replace text in document',
+          errorSeverity: 'error'
+        });
+        return;
+      }
+
+      // Success! Clear states and show brief success message
       this.setState({
         isProcessing: false,
         processingMessage: '',
         aiResponse: null,
+        selectedText: '', // Clear selection as it's been replaced
         error: null
       });
+
+      // Show temporary success notification
+      setTimeout(() => {
+        this.setState({
+          error: `Successfully replaced ${result.originalLength} characters with ${result.newLength} characters`,
+          errorSeverity: 'info'
+        });
+
+        // Clear success message after 3 seconds
+        setTimeout(() => {
+          this.setState({ error: null });
+        }, 3000);
+      }, 100);
     } catch (error) {
+      // Handle unexpected errors
       this.setState({
         isProcessing: false,
         processingMessage: '',
