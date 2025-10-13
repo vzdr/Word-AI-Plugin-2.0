@@ -7,6 +7,7 @@
 import { Router } from 'express';
 import healthRouter from './health';
 import parserRouter from './parser';
+import queryRouter from './query';
 
 const router = Router();
 
@@ -25,11 +26,18 @@ router.use('/health', healthRouter);
 router.use('/parser', parserRouter);
 
 /**
- * Future routes will be added here:
- *
  * AI Query endpoint
  * POST /api/query
- * router.use('/query', queryRouter);
+ * GET /api/query/models
+ * GET /api/query/settings
+ * GET /api/query/cache/stats
+ * DELETE /api/query/cache
+ * GET /api/query/health
+ */
+router.use('/query', queryRouter);
+
+/**
+ * Future routes will be added here:
  *
  * File upload endpoint
  * POST /api/upload
