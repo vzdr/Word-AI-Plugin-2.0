@@ -9,6 +9,15 @@ interface EnvConfig {
   nodeEnv: string;
   corsOrigin: string[];
   apiPrefix: string;
+  openai: {
+    apiKey: string;
+    orgId?: string;
+    defaultModel: string;
+    defaultTemperature: number;
+    defaultMaxTokens: number;
+    requestTimeout: number;
+    maxRetries: number;
+  };
 }
 
 function getEnvVariable(key: string, defaultValue?: string): string {
@@ -38,6 +47,15 @@ export const config: EnvConfig = {
     getEnvVariable('CORS_ORIGIN', 'https://localhost:3000')
   ),
   apiPrefix: getEnvVariable('API_PREFIX', '/api'),
+  openai: {
+    apiKey: getEnvVariable('OPENAI_API_KEY'),
+    orgId: process.env.OPENAI_ORG_ID,
+    defaultModel: getEnvVariable('DEFAULT_AI_MODEL', 'gpt-3.5-turbo'),
+    defaultTemperature: parseFloat(getEnvVariable('DEFAULT_AI_TEMPERATURE', '0.7')),
+    defaultMaxTokens: parseInt(getEnvVariable('DEFAULT_AI_MAX_TOKENS', '2000'), 10),
+    requestTimeout: parseInt(getEnvVariable('AI_REQUEST_TIMEOUT', '30000'), 10),
+    maxRetries: parseInt(getEnvVariable('AI_MAX_RETRIES', '3'), 10),
+  },
 };
 
 export default config;
