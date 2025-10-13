@@ -201,3 +201,106 @@ button:disabled {
 .context-divider span {
   padding: 0 15px;
 }
+
+/* Success state styles */
+.success-state {
+  background: #f0f9ff;
+  border: 2px solid #667eea;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 15px;
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.success-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.success-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: #667eea;
+  color: white;
+  border-radius: 50%;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.success-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #667eea;
+  font-weight: 600;
+}
+
+.success-content {
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 12px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.ai-response {
+  margin: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #333;
+}
+
+.success-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.success-actions button {
+  flex: 1;
+}
+
+.secondary-button {
+  background: #6c757d;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.3s;
+}
+
+.secondary-button:hover:not(:disabled) {
+  background: #5a6268;
+}
+
+.secondary-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+/* Accessibility: Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  .success-state {
+    animation: none;
+  }
+}

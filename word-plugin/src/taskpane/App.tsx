@@ -3,6 +3,8 @@ import './App.css';
 import InlineContext from './components/InlineContext';
 import FileUpload, { UploadedFile } from './components/FileUpload';
 import Settings, { SettingsValues } from './components/Settings';
+import LoadingIndicator from './components/LoadingIndicator';
+import ErrorDisplay, { ErrorSeverity } from './components/ErrorDisplay';
 import {
   getTextSelection,
   SelectionLocation
@@ -14,6 +16,10 @@ interface AppState {
   selectionParagraphCount: number;
   selectionError: string | null;
   isProcessing: boolean;
+  processingMessage: string;
+  error: string | null;
+  errorSeverity: ErrorSeverity;
+  aiResponse: string | null;
   inlineContext: string;
   uploadedFiles: UploadedFile[];
   fileUploadError: string | null;
@@ -36,6 +42,10 @@ class App extends React.Component<{}, AppState> {
       selectionParagraphCount: 0,
       selectionError: null,
       isProcessing: false,
+      processingMessage: '',
+      error: null,
+      errorSeverity: 'error',
+      aiResponse: null,
       inlineContext: '',
       uploadedFiles: [],
       fileUploadError: null,
@@ -96,6 +106,68 @@ class App extends React.Component<{}, AppState> {
     this.setState({ settings: DEFAULT_SETTINGS });
   };
 
+  handleAskAI = async () => {
+    // Clear previous error and response
+    this.setState({
+      error: null,
+      aiResponse: null,
+      isProcessing: true,
+      processingMessage: 'Processing your request...'
+    });
+
+    try {
+      // Placeholder for AI integration (Stream C will implement)
+      // Simulate processing for now
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Placeholder response
+      this.setState({
+        isProcessing: false,
+        aiResponse: 'AI response will be integrated in Stream C',
+        processingMessage: ''
+      });
+    } catch (error) {
+      this.setState({
+        isProcessing: false,
+        processingMessage: '',
+        error: error instanceof Error ? error.message : 'Failed to process request',
+        errorSeverity: 'error'
+      });
+    }
+  };
+
+  handleReplaceText = async () => {
+    if (!this.state.aiResponse) return;
+
+    this.setState({
+      isProcessing: true,
+      processingMessage: 'Replacing text in document...'
+    });
+
+    try {
+      // Placeholder for text replacement (will be implemented later)
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      this.setState({
+        isProcessing: false,
+        processingMessage: '',
+        aiResponse: null,
+        error: null
+      });
+    } catch (error) {
+      this.setState({
+        isProcessing: false,
+        processingMessage: '',
+        error: error instanceof Error ? error.message : 'Failed to replace text',
+        errorSeverity: 'error'
+      });
+    }
+  };
+
+  clearError = () => {
+    this.setState({ error: null });
+  };
+
   getLocationBadgeClass = (location: SelectionLocation): string => {
     const baseClass = 'location-badge';
     switch (location) {
@@ -121,6 +193,10 @@ class App extends React.Component<{}, AppState> {
       selectionError,
       inlineContext,
       isProcessing,
+      processingMessage,
+      error,
+      errorSeverity,
+      aiResponse,
       uploadedFiles,
       fileUploadError,
       settings
@@ -206,12 +282,61 @@ class App extends React.Component<{}, AppState> {
 
           <section className="actions-section">
             <h2>Actions</h2>
-            <button
-              disabled={!selectedText || isProcessing}
-              className="primary-button"
-            >
-              Ask AI
-            </button>
+
+            {/* Global error display */}
+            {error && (
+              <ErrorDisplay
+                error={error}
+                severity={errorSeverity}
+                onDismiss={this.clearError}
+                onRetry={aiResponse ? undefined : this.handleAskAI}
+              />
+            )}
+
+            {/* Loading indicator */}
+            {isProcessing && (
+              <LoadingIndicator message={processingMessage} />
+            )}
+
+            {/* AI Response success state */}
+            {aiResponse && !isProcessing && (
+              <div className="success-state">
+                <div className="success-header">
+                  <span className="success-icon">✓</span>
+                  <h3>AI Response Ready</h3>
+                </div>
+                <div className="success-content">
+                  <pre className="ai-response">{aiResponse}</pre>
+                </div>
+                <div className="success-actions">
+                  <button
+                    onClick={this.handleReplaceText}
+                    className="primary-button"
+                    disabled={isProcessing}
+                  >
+                    Replace Selected Text
+                  </button>
+                  <button
+                    onClick={() => this.setState({ aiResponse: null })}
+                    className="secondary-button"
+                    disabled={isProcessing}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Ask AI button - only show when not processing and no response */}
+            {!aiResponse && !isProcessing && (
+              <button
+                onClick={this.handleAskAI}
+                disabled={!selectedText || isProcessing}
+                className="primary-button"
+              >
+                Ask AI
+              </button>
+            )}
           </section>
         </main>
       </div>
