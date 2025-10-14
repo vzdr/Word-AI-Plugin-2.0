@@ -2,11 +2,12 @@
  * AI Service API Client
  *
  * Handles communication with the backend AI service for text generation.
- * Provides error handling, timeout management, and request/response typing.
+ * Provides error handling, timeout management, retry logic, and request/response typing.
  */
 
 import { SettingsValues } from '../taskpane/components/Settings';
 import { UploadedFile } from '../taskpane/components/FileUpload';
+import { retryWithBackoff, RetryConfig, shouldRetryError } from '../utils/retry';
 
 /**
  * Configuration for AI service requests
@@ -149,7 +150,44 @@ const DEFAULT_CONFIG: Required<AIServiceConfig> = {
 };
 
 /**
- * Send AI query to backend service
+ * Retry configuration for AI service requests
+ * Retries transient failures: rate limits (429), timeouts, 503 errors
+ * Does NOT retry: 400, 401, 404, 422 (client errors)
+ */
+const AI_SERVICE_RETRY_CONFIG: RetryConfig = {
+  maxAttempts: 3,
+  initialDelay: 1000, // 1 second
+  maxDelay: 10000, // 10 seconds
+  backoffMultiplier: 2,
+  shouldRetry: (error: Error) => {
+    // Check for AIServiceError with specific error types
+    if (isAIServiceError(error)) {
+      // Retry transient errors
+      if (
+        error.type === AIServiceErrorType.TIMEOUT ||
+        error.type === AIServiceErrorType.NETWORK_ERROR ||
+        error.type === AIServiceErrorType.SERVICE_UNAVAILABLE ||
+        error.type === AIServiceErrorType.RATE_LIMIT
+      ) {
+        return true;
+      }
+
+      // Do NOT retry client errors
+      if (
+        error.type === AIServiceErrorType.INVALID_REQUEST ||
+        error.type === AIServiceErrorType.AUTH_ERROR
+      ) {
+        return false;
+      }
+    }
+
+    // Fall back to generic retry logic for other errors
+    return shouldRetryError(error);
+  },
+};
+
+/**
+ * Send AI query to backend service (internal implementation without retry)
  *
  * @param selectedText - The text selected in Word document
  * @param context - Inline context provided by user
@@ -158,25 +196,9 @@ const DEFAULT_CONFIG: Required<AIServiceConfig> = {
  * @param config - Optional service configuration
  * @returns Promise resolving to AI response
  * @throws AIServiceError on failure
- *
- * @example
- * ```typescript
- * try {
- *   const response = await askAI(
- *     'Selected text',
- *     'Context information',
- *     [],
- *     { model: 'gpt-3.5-turbo', temperature: 0.7, maxTokens: 2000 }
- *   );
- *   console.log(response.response);
- * } catch (error) {
- *   if (isAIServiceError(error)) {
- *     console.error(`Error type: ${error.type}, Message: ${error.message}`);
- *   }
- * }
- * ```
+ * @private
  */
-export async function askAI(
+async function askAIInternal(
   selectedText: string,
   context: string = '',
   files: UploadedFile[] = [],
@@ -267,6 +289,58 @@ export async function askAI(
       error
     );
   }
+}
+
+/**
+ * Send AI query to backend service with automatic retry
+ *
+ * This is the public API that wraps askAIInternal with retry logic.
+ * Automatically retries transient failures (timeouts, 503, 429) with exponential backoff.
+ * Does NOT retry permanent errors (400, 401, 404).
+ *
+ * @param selectedText - The text selected in Word document
+ * @param context - Inline context provided by user
+ * @param files - Array of uploaded files for additional context
+ * @param settings - AI model settings (model, temperature, maxTokens)
+ * @param config - Optional service configuration
+ * @returns Promise resolving to AI response
+ * @throws AIServiceError on failure (after all retry attempts exhausted)
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   const response = await askAI(
+ *     'Selected text',
+ *     'Context information',
+ *     [],
+ *     { model: 'gpt-3.5-turbo', temperature: 0.7, maxTokens: 2000 }
+ *   );
+ *   console.log(response.response);
+ * } catch (error) {
+ *   if (isAIServiceError(error)) {
+ *     console.error(`Error type: ${error.type}, Message: ${error.message}`);
+ *   }
+ * }
+ * ```
+ */
+export async function askAI(
+  selectedText: string,
+  context: string = '',
+  files: UploadedFile[] = [],
+  settings: SettingsValues,
+  config: AIServiceConfig = {}
+): Promise<AIQueryResponse> {
+  return retryWithBackoff(
+    () => askAIInternal(selectedText, context, files, settings, config),
+    AI_SERVICE_RETRY_CONFIG,
+    (attempt, delay, error) => {
+      // Log retry attempts
+      console.log(
+        `[AI Service] Retry attempt ${attempt}/${AI_SERVICE_RETRY_CONFIG.maxAttempts} ` +
+        `after ${delay}ms delay. Error: ${error.message}`
+      );
+    }
+  );
 }
 
 /**
