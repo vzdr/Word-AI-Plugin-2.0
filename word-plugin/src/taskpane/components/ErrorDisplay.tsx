@@ -9,6 +9,10 @@ export interface ErrorDisplayProps {
   dismissible?: boolean;
   onDismiss?: () => void;
   onRetry?: () => void;
+  /** Current retry attempt number (1-indexed) */
+  retryAttempt?: number;
+  /** Maximum number of retry attempts allowed */
+  maxRetries?: number;
 }
 
 const ErrorDisplay: React.FC<ErrorDisplayProps> = ({
@@ -16,7 +20,9 @@ const ErrorDisplay: React.FC<ErrorDisplayProps> = ({
   severity = 'error',
   dismissible = true,
   onDismiss,
-  onRetry
+  onRetry,
+  retryAttempt,
+  maxRetries
 }) => {
   const errorMessage = typeof error === 'string' ? error : error.message;
 
@@ -49,6 +55,11 @@ const ErrorDisplay: React.FC<ErrorDisplayProps> = ({
         </span>
         <div className={styles.messageContainer}>
           <p className={styles.message}>{errorMessage}</p>
+          {retryAttempt !== undefined && maxRetries !== undefined && (
+            <p className={styles.retryInfo}>
+              Retry attempt {retryAttempt} of {maxRetries}
+            </p>
+          )}
           {onRetry && (
             <button
               type="button"

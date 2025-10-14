@@ -66,6 +66,14 @@
   word-break: break-word;
 }
 
+.retryInfo {
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 4px 0 0 0;
+  opacity: 0.8;
+  font-style: italic;
+}
+
 .retryButton {
   align-self: flex-start;
   padding: 6px 12px;
