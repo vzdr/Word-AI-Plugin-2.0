@@ -26,24 +26,37 @@ Guidelines:
 - Maintain a professional and helpful tone
 - Format your response clearly and readably`;
 
+const NO_CONTEXT_SYSTEM_PROMPT = `You are a helpful AI assistant. Please answer the user's question accurately and concisely.`;
+
 /**
  * Build a complete prompt from an AI request
  */
 export function buildPrompt(request: AIRequest): PromptTemplate {
   const { question, contextFiles, inlineContext } = request;
 
+  if (inlineContext && inlineContext.includes('You are a table cell processor')) {
+    return {
+      system: inlineContext,
+      user: question,
+    };
+  }
+
   // Build the context section
   const contextSection = buildContextSection(contextFiles, inlineContext);
 
+  // Check if there is any meaningful context
+  const hasContext = contextSection.trim().length > 0 && !contextSection.includes('NO CONTEXT PROVIDED');
+
+  // Choose system prompt based on context
+  const systemPrompt = hasContext ? DEFAULT_SYSTEM_PROMPT : NO_CONTEXT_SYSTEM_PROMPT;
+
   // Build the user message
-  const userMessage = `${contextSection}
-
-User Question: ${question}
-
-Please provide a comprehensive answer based on the context provided above. Remember to cite your sources.`;
+  const userMessage = hasContext
+    ? `${contextSection}\n\nUser Question: ${question}\n\nPlease provide a comprehensive answer based on the context provided above. Remember to cite your sources.`
+    : `User Question: ${question}`;
 
   return {
-    system: DEFAULT_SYSTEM_PROMPT,
+    system: systemPrompt,
     user: userMessage,
   };
 }

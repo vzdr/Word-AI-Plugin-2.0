@@ -363,8 +363,11 @@ export async function fillCellsWithContent(
       }
 
       const table = bodyTables.items[tableIndex];
-      table.load(['rowCount', 'columnCount']);
+      table.load('values');
       await context.sync();
+
+      const rowCount = table.values.length;
+      const columnCount = table.values.length > 0 ? table.values[0].length : 0;
 
       // Apply each update
       for (const update of cellUpdates) {
@@ -379,9 +382,9 @@ export async function fillCellsWithContent(
           // Validate cell coordinates
           if (
             update.rowIndex < 0 ||
-            update.rowIndex >= table.rowCount ||
+            update.rowIndex >= rowCount ||
             update.colIndex < 0 ||
-            update.colIndex >= table.columnCount
+            update.colIndex >= columnCount
           ) {
             appliedUpdates.push({
               ...update,
@@ -530,7 +533,7 @@ export function buildCellContext(
   cell: CellInfo,
   table: TableStructure
 ): CellContext {
-  const { rowIndex, colIndex } = cell;
+  const { rowIndex, colIndex, text } = cell;
   const { cells, headers } = table;
 
   // Get column header
@@ -569,6 +572,7 @@ export function buildCellContext(
   return {
     rowIndex,
     colIndex,
+    originalContent: text,
     columnHeader,
     rowContext,
     columnContext,

@@ -26,6 +26,11 @@ export interface CellContext {
   colIndex: number;
 
   /**
+   * Original content of the cell
+   */
+  originalContent?: string;
+
+  /**
    * Column header text (if table has headers)
    */
   columnHeader?: string;
@@ -247,16 +252,20 @@ export async function generateCellContent(
   userContext?: string
 ): Promise<CellGenerationResult> {
   try {
-    // Build the AI prompt with full context
-    const prompt = buildCellPrompt(cellContext, tableContext, userContext);
+    const systemPrompt = `
+    You are a table cell processor. You will be given the content of a single table cell. Your task is to return the processed content for that cell based on the following rules:
+    1. If the cell content is a mathematical expression ending with \'=?\', you MUST return only the numerical result of the calculation.
+    2. If the cell content is an empty string, you MUST return an empty string.
+    3. If the cell content is anything else, you MUST return the original content unchanged.
+    Do not provide any explanation, preamble, or formatting. Return only the processed cell content.
+    `;
 
-    // Use a placeholder for selectedText (required by askAI)
-    const selectedText = `Generate content for cell at row ${cellContext.rowIndex + 1}, column ${cellContext.colIndex + 1}`;
+    const selectedText = cellContext.originalContent || '';
 
     // Call AI service
     const response = await askAI(
       selectedText,
-      prompt,
+      systemPrompt,
       [], // No files for table generation
       settings
     );
@@ -394,122 +403,7 @@ export async function generateBatchCellContent(
   }
 }
 
-/**
- * Build AI prompt for cell content generation
- *
- * Creates a context-rich prompt using:
- * - Column header (what type of data)
- * - Row context (other cells in same row)
- * - Adjacent cells (immediate neighbors)
- * - Table purpose (inferred from structure)
- *
- * @param cellContext - Context for the specific cell
- * @param tableContext - Context for the entire table
- * @param userContext - Optional user-provided context
- * @returns Formatted prompt string for AI
- *
- * @internal
- */
-function buildCellPrompt(
-  cellContext: CellContext,
-  tableContext: TableContext,
-  userContext?: string
-): string {
-  const parts: string[] = [];
 
-  // Add user context if provided
-  if (userContext) {
-    parts.push(`Context: ${userContext}`);
-    parts.push('');
-  }
-
-  // Add table structure info
-  parts.push(`Table Structure: ${tableContext.rowCount} rows x ${tableContext.columnCount} columns`);
-
-  // Add table purpose if available
-  if (tableContext.purpose) {
-    parts.push(`Table Purpose: ${tableContext.purpose}`);
-  }
-
-  parts.push('');
-
-  // Add cell position
-  parts.push(
-    `Generate content for cell at Row ${cellContext.rowIndex + 1}, Column ${cellContext.colIndex + 1}`
-  );
-
-  // Add column header if available
-  if (cellContext.columnHeader) {
-    parts.push(`Column: ${cellContext.columnHeader}`);
-  }
-
-  parts.push('');
-
-  // Add row context (other cells in the same row)
-  if (cellContext.rowContext.length > 0) {
-    const nonEmptyRowContext = cellContext.rowContext.filter((text) => text.trim().length > 0);
-    if (nonEmptyRowContext.length > 0) {
-      parts.push('Other cells in this row:');
-      nonEmptyRowContext.forEach((text, idx) => {
-        parts.push(`  - ${text}`);
-      });
-      parts.push('');
-    }
-  }
-
-  // Add adjacent cells for immediate context
-  const adjacentParts: string[] = [];
-  if (cellContext.adjacentCells.left) {
-    adjacentParts.push(`Left: "${cellContext.adjacentCells.left}"`);
-  }
-  if (cellContext.adjacentCells.right) {
-    adjacentParts.push(`Right: "${cellContext.adjacentCells.right}"`);
-  }
-  if (cellContext.adjacentCells.top) {
-    adjacentParts.push(`Above: "${cellContext.adjacentCells.top}"`);
-  }
-  if (cellContext.adjacentCells.bottom) {
-    adjacentParts.push(`Below: "${cellContext.adjacentCells.bottom}"`);
-  }
-
-  if (adjacentParts.length > 0) {
-    parts.push('Adjacent cells:');
-    adjacentParts.forEach((part) => parts.push(`  - ${part}`));
-    parts.push('');
-  }
-
-  // Add column context (sample of other cells in same column)
-  if (cellContext.columnContext.length > 0) {
-    const nonEmptyColumnContext = cellContext.columnContext
-      .filter((text) => text.trim().length > 0)
-      .slice(0, 3); // Limit to 3 examples
-
-    if (nonEmptyColumnContext.length > 0) {
-      parts.push('Examples from this column:');
-      nonEmptyColumnContext.forEach((text) => {
-        parts.push(`  - ${text}`);
-      });
-      parts.push('');
-    }
-  }
-
-  // Add sample data if available
-  if (tableContext.sampleData && tableContext.sampleData.length > 0) {
-    parts.push('Sample data from table:');
-    tableContext.sampleData.slice(0, 2).forEach((row, idx) => {
-      parts.push(`  Row ${idx + 1}: ${row.join(' | ')}`);
-    });
-    parts.push('');
-  }
-
-  // Add instruction
-  parts.push(
-    'Generate appropriate content for this cell based on the context above. ' +
-      'Return ONLY the cell content, without any additional explanation or formatting.'
-  );
-
-  return parts.join('\n');
-}
 
 /**
  * Delay helper for rate limiting between batches

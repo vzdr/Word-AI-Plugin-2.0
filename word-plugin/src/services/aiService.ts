@@ -145,7 +145,7 @@ export enum AIServiceErrorType {
  * Default configuration
  */
 const DEFAULT_CONFIG: Required<AIServiceConfig> = {
-  baseUrl: 'http://localhost:3001',
+  baseUrl: 'https://localhost:3001',
   timeout: 30000,
 };
 
@@ -216,13 +216,17 @@ async function askAIInternal(
     );
   }
 
-  // Prepare request payload
-  const requestPayload: AIQueryRequest = {
-    selectedText,
-    inlineContext: context,
-    files: await prepareFilesForRequest(files),
-    settings,
-  };
+  // Prepare form data
+  const formData = new FormData();
+  formData.append('selectedText', selectedText);
+  formData.append('inlineContext', context);
+  formData.append('settings', JSON.stringify(settings));
+
+  files.forEach((file) => {
+    if (file.file) {
+      formData.append('files', file.file, file.name);
+    }
+  });
 
   // Create abort controller for timeout
   const controller = new AbortController();
@@ -231,10 +235,7 @@ async function askAIInternal(
   try {
     const response = await fetch(apiUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestPayload),
+      body: formData,
       signal: controller.signal,
     });
 
@@ -242,11 +243,13 @@ async function askAIInternal(
 
     // Handle HTTP errors
     if (!response.ok) {
+      console.error('[AI Service] HTTP error:', response.status, response.statusText);
       await handleHttpError(response);
     }
 
     // Parse response
     const data: AIQueryResponse = await response.json();
+    console.log('[AI Service] Success response:', data);
 
     // Validate response format
     if (!data.response || typeof data.response !== 'string') {
@@ -343,66 +346,7 @@ export async function askAI(
   );
 }
 
-/**
- * Prepare uploaded files for API request
- * Converts File objects to base64-encoded strings
- */
-async function prepareFilesForRequest(
-  files: UploadedFile[]
-): Promise<AIQueryRequest['files']> {
-  if (!files || files.length === 0) {
-    return undefined;
-  }
 
-  const preparedFiles = await Promise.all(
-    files.map(async (uploadedFile) => {
-      let content: string | undefined;
-
-      // Read file content if File object is available
-      if (uploadedFile.file) {
-        try {
-          content = await readFileAsBase64(uploadedFile.file);
-        } catch (error) {
-          console.error(`Failed to read file ${uploadedFile.name}:`, error);
-          // Continue without content rather than failing entire request
-        }
-      }
-
-      return {
-        id: uploadedFile.id,
-        name: uploadedFile.name,
-        size: uploadedFile.size,
-        type: uploadedFile.type,
-        extension: uploadedFile.extension,
-        content,
-      };
-    })
-  );
-
-  return preparedFiles;
-}
-
-/**
- * Read file as base64 string
- */
-function readFileAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onload = () => {
-      const result = reader.result as string;
-      // Remove data URL prefix (e.g., "data:text/plain;base64,")
-      const base64 = result.split(',')[1] || result;
-      resolve(base64);
-    };
-
-    reader.onerror = () => {
-      reject(new Error(`Failed to read file: ${file.name}`));
-    };
-
-    reader.readAsDataURL(file);
-  });
-}
 
 /**
  * Handle HTTP error responses
