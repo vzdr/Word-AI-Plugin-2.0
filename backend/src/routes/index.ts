@@ -8,6 +8,7 @@ import { Router } from 'express';
 import healthRouter from './health';
 import parserRouter from './parser';
 import queryRouter from './query';
+import aiRouter from './ai';
 
 const router = Router();
 
@@ -35,6 +36,12 @@ router.use('/parser', parserRouter);
  * GET /api/query/health
  */
 router.use('/query', queryRouter);
+
+/**
+ * AI Text Generation endpoint
+ * POST /api/ai/query
+ */
+router.use('/ai', aiRouter);
 
 /**
  * Future routes will be added here:

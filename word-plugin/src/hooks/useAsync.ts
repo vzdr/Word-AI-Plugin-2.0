@@ -25,7 +25,7 @@ export interface UseAsyncOptions<T> {
   /**
    * Callback invoked when async function fails
    */
-  onError?: (error: Error) => void;
+  onError?: (error: any) => void;
 }
 
 /**
@@ -122,7 +122,7 @@ export function useAsync<T>(
   // State management
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const [error, setError] = useState<any | null>(null);
 
   // Use ref to track if component is mounted (prevent state updates after unmount)
   const isMountedRef = useRef(true);
@@ -173,17 +173,15 @@ export function useAsync<T>(
           }
         }
       } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-
         // Update state with error (only if still mounted)
         if (isMountedRef.current) {
-          setError(error);
+          setError(err);
           setData(null);
           setLoading(false);
 
           // Invoke error callback
           if (onErrorRef.current) {
-            onErrorRef.current(error);
+            onErrorRef.current(err);
           }
         }
       }

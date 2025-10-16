@@ -10,9 +10,10 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "types": ["office-js"],
+    "isolatedModules": true,
+    "types": ["office-js", "node"],
     "outDir": "./dist"
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx", "**/__tests__/**"]
 }

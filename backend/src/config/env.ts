@@ -9,9 +9,15 @@ interface EnvConfig {
   nodeEnv: string;
   corsOrigin: string[];
   apiPrefix: string;
+  aiProvider: 'openai' | 'gemini';
   openai: {
     apiKey: string;
     orgId?: string;
+  };
+  gemini: {
+    apiKey: string;
+  };
+  ai: {
     defaultModel: string;
     defaultTemperature: number;
     defaultMaxTokens: number;
@@ -47,10 +53,16 @@ export const config: EnvConfig = {
     getEnvVariable('CORS_ORIGIN', 'https://localhost:3000')
   ),
   apiPrefix: getEnvVariable('API_PREFIX', '/api'),
+  aiProvider: (getEnvVariable('AI_PROVIDER', 'gemini') as 'openai' | 'gemini'),
   openai: {
-    apiKey: getEnvVariable('OPENAI_API_KEY'),
+    apiKey: process.env.OPENAI_API_KEY || '',
     orgId: process.env.OPENAI_ORG_ID,
-    defaultModel: getEnvVariable('DEFAULT_AI_MODEL', 'gpt-3.5-turbo'),
+  },
+  gemini: {
+    apiKey: process.env.GEMINI_API_KEY || '',
+  },
+  ai: {
+    defaultModel: getEnvVariable('DEFAULT_AI_MODEL', 'gemini-2.5-pro'),
     defaultTemperature: parseFloat(getEnvVariable('DEFAULT_AI_TEMPERATURE', '0.7')),
     defaultMaxTokens: parseInt(getEnvVariable('DEFAULT_AI_MAX_TOKENS', '2000'), 10),
     requestTimeout: parseInt(getEnvVariable('AI_REQUEST_TIMEOUT', '30000'), 10),

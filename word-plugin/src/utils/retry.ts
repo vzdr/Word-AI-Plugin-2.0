@@ -37,7 +37,7 @@ export interface RetryConfig {
    * Custom function to determine if an error should be retried
    * If not provided, uses default shouldRetryError logic
    */
-  shouldRetry?: (error: Error) => boolean;
+  shouldRetry?: (error: any) => boolean;
 }
 
 /**
@@ -101,8 +101,8 @@ export function calculateDelay(attempt: number, config: RetryConfig): number {
  * shouldRetryError(authError); // false
  * ```
  */
-export function shouldRetryError(error: Error): boolean {
-  const errorMessage = error.message.toLowerCase();
+export function shouldRetryError(error: any): boolean {
+  const errorMessage = error?.message?.toLowerCase() || '';
 
   // Check for network-related errors
   if (
@@ -210,16 +210,16 @@ export function shouldRetryError(error: Error): boolean {
 export async function retryWithBackoff<T>(
   fn: () => Promise<T>,
   config: Partial<RetryConfig> = {},
-  onRetry?: (attempt: number, delay: number, error: Error) => void
+  onRetry?: (attempt: number, delay: number, error: any) => void
 ): Promise<T> {
   const retryConfig: RetryConfig = { ...DEFAULT_RETRY_CONFIG, ...config };
-  let lastError: Error;
+  let lastError: any;
 
   for (let attempt = 0; attempt < retryConfig.maxAttempts; attempt++) {
     try {
       return await fn();
     } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
+      lastError = error;
 
       // Check if we should retry this error
       const shouldRetry = retryConfig.shouldRetry

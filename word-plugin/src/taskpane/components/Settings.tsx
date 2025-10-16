@@ -16,9 +16,11 @@ export interface SettingsProps {
 
 // Model options for dropdown
 const MODEL_OPTIONS = [
-  { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
-  { value: 'gpt-4', label: 'GPT-4' },
-  { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' }
+  { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+  { value: 'gemini-flash-latest', label: 'Gemini Flash Latest' },
+  { value: 'gemini-flash-lite-latest', label: 'Gemini Flash-Lite Latest' },
+  { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+  { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite' }
 ];
 
 // Validation constants

@@ -235,14 +235,18 @@ async function buildTableInfo(
   // Detect if table has headers (first row styling)
   let hasHeaders = false;
   try {
-    const firstRow = table.getRow(0);
-    firstRow.load('font/bold');
+    const firstCell = table.getCell(0, 0);
+    firstCell.load('body/font/bold');
     await context.sync();
-    hasHeaders = firstRow.font.bold || false;
+    hasHeaders = firstCell.body.font.bold || false;
   } catch (error) {
     // If we can't determine, assume false
     hasHeaders = false;
   }
+
+  // Get table dimensions from values
+  const rowCount = table.values.length;
+  const columnCount = table.values.length > 0 ? table.values[0].length : 0;
 
   // Count empty cells if parseStructure is enabled
   let emptyCellCount: number | undefined = undefined;
@@ -257,12 +261,12 @@ async function buildTableInfo(
 
   return {
     id,
-    rowCount: table.rowCount,
-    columnCount: table.columnCount,
+    rowCount,
+    columnCount,
     hasHeaders,
     location,
     isNested,
-    totalCells: table.rowCount * table.columnCount,
+    totalCells: rowCount * columnCount,
     emptyCellCount,
     hasMergedCells,
     index,
@@ -437,7 +441,7 @@ async function parseCellInfo(
 ): Promise<CellInfo> {
   try {
     const cell = table.getCell(rowIndex, colIndex);
-    cell.load(['body/text', 'width', 'height']);
+    cell.load('body/text');
     await context.sync();
 
     const text = cell.body.text;
@@ -458,8 +462,6 @@ async function parseCellInfo(
       hasNestedTable,
       characterCount: text.length,
       id: `${rowIndex}-${colIndex}`,
-      width: cell.width,
-      height: cell.height,
     };
   } catch (error) {
     console.error(`Error parsing cell at ${rowIndex},${colIndex}:`, error);
@@ -523,13 +525,13 @@ async function getTableHeadersFromTable(
   context: Word.RequestContext
 ): Promise<string[]> {
   try {
-    table.load('columnCount');
+    table.load('values');
     await context.sync();
 
     const headers: string[] = [];
-    const firstRow = table.getRow(0);
+    const columnCount = table.values.length > 0 ? table.values[0].length : 0;
 
-    for (let col = 0; col < table.columnCount; col++) {
+    for (let col = 0; col < columnCount; col++) {
       const cell = table.getCell(0, col);
       cell.load('body/text');
       await context.sync();
@@ -600,14 +602,16 @@ export async function findEmptyCells(
 
     // If it's a Word.Table
     if (context) {
-      table.load(['rowCount', 'columnCount']);
+      table.load('values');
       await context.sync();
 
       const emptyCells: CellInfo[] = [];
       let totalCells = 0;
+      const rowCount = table.values.length;
+      const columnCount = table.values.length > 0 ? table.values[0].length : 0;
 
-      for (let row = 0; row < table.rowCount; row++) {
-        for (let col = 0; col < table.columnCount; col++) {
+      for (let row = 0; row < rowCount; row++) {
+        for (let col = 0; col < columnCount; col++) {
           totalCells++;
           const cell = table.getCell(row, col);
           cell.load('body/text');
@@ -818,13 +822,15 @@ async function countEmptyCells(
   context: Word.RequestContext
 ): Promise<number> {
   try {
-    table.load(['rowCount', 'columnCount']);
+    table.load('values');
     await context.sync();
 
     let emptyCount = 0;
+    const rowCount = table.values.length;
+    const columnCount = table.values.length > 0 ? table.values[0].length : 0;
 
-    for (let row = 0; row < table.rowCount; row++) {
-      for (let col = 0; col < table.columnCount; col++) {
+    for (let row = 0; row < rowCount; row++) {
+      for (let col = 0; col < columnCount; col++) {
         const cell = table.getCell(row, col);
         cell.load('body/text');
         await context.sync();

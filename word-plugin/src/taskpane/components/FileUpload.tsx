@@ -11,6 +11,7 @@ import {
   SUPPORTED_FILE_TYPES,
   calculateTotalSize
 } from '../../utils/fileValidation';
+import { logger, logValidation } from '../../utils/logger';
 
 // Extended version that includes the File object for component use
 export interface UploadedFile extends BaseUploadedFile {
@@ -40,7 +41,15 @@ const FileUpload: React.FC<FileUploadProps> = ({
 
   // Process files and add to list using Stream B validation utilities
   const processFiles = (fileList: FileList | null) => {
-    if (!fileList || fileList.length === 0) return;
+    if (!fileList || fileList.length === 0) {
+      logger.debug('No files to process');
+      return;
+    }
+
+    logger.info('Processing file upload', {
+      fileCount: fileList.length,
+      fileNames: Array.from(fileList).map(f => f.name)
+    });
 
     // Convert FileList to array
     const fileArray = Array.from(fileList);
@@ -51,6 +60,7 @@ const FileUpload: React.FC<FileUploadProps> = ({
       const isDuplicate = files.some(f => f.name === file.name && f.size === file.size);
       if (isDuplicate) {
         duplicates.push(`${file.name}: File already uploaded`);
+        logger.warn('Duplicate file detected', { fileName: file.name, fileSize: file.size });
       }
       return !isDuplicate;
     });
@@ -63,11 +73,30 @@ const FileUpload: React.FC<FileUploadProps> = ({
       existingFiles: files
     });
 
+    // Log validation results
+    if (validationResult.validFiles.length > 0) {
+      logValidation.pass('File validation', {
+        validFileCount: validationResult.validFiles.length,
+        validFiles: validationResult.validFiles.map(f => f.name)
+      });
+    }
+
+    if (validationResult.errors.length > 0) {
+      logValidation.fail('File validation', {
+        errorCount: validationResult.errors.length,
+        errors: validationResult.errors
+      });
+    }
+
     // Collect all errors
     const allErrors: string[] = [...duplicates, ...validationResult.errors];
 
     // Report errors if any
     if (allErrors.length > 0 && onError) {
+      logger.error('File upload errors', new Error('File validation failed'), {
+        errorCount: allErrors.length,
+        errors: allErrors
+      });
       onError(allErrors.join('\n'));
     }
 
@@ -84,6 +113,12 @@ const FileUpload: React.FC<FileUploadProps> = ({
           extension,
           uploadedAt: Date.now()
         };
+      });
+
+      logger.info('Files uploaded successfully', {
+        uploadedCount: newUploadedFiles.length,
+        totalFiles: files.length + newUploadedFiles.length,
+        uploadedFiles: newUploadedFiles.map(f => ({ name: f.name, size: f.size, extension: f.extension }))
       });
 
       onFilesChange([...files, ...newUploadedFiles]);
@@ -140,7 +175,17 @@ const FileUpload: React.FC<FileUploadProps> = ({
 
   // Remove file from list
   const handleRemoveFile = (fileId: string) => {
+    const removedFile = files.find(f => f.id === fileId);
     const updatedFiles = files.filter(f => f.id !== fileId);
+
+    if (removedFile) {
+      logger.info('File removed', {
+        fileName: removedFile.name,
+        fileSize: removedFile.size,
+        remainingFiles: updatedFiles.length
+      });
+    }
+
     onFilesChange(updatedFiles);
   };
 

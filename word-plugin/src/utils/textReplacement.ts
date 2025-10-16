@@ -19,6 +19,7 @@ import {
   DEFAULT_REPLACEMENT_OPTIONS,
 } from '../types/replacement';
 import { getSelectionMetadata, SelectionLocation } from './textSelection';
+import { logger, logAsyncOperation, logValidation } from './logger';
 
 /**
  * Replace selected text with new content while preserving formatting
@@ -44,12 +45,24 @@ export async function replaceSelectedText(
 ): Promise<ReplacementResult> {
   const opts = { ...DEFAULT_REPLACEMENT_OPTIONS, ...options };
 
+  logAsyncOperation.start('Replace selected text', {
+    newTextLength: newText.length,
+    preserveFormatting: opts.preserveFormatting,
+    useHtml: opts.useHtml,
+    validateSelection: opts.validateSelection
+  });
+
   return Word.run(async (context) => {
     try {
       // Validate selection if requested
       if (opts.validateSelection) {
+        logger.debug('Validating selection for replacement');
         const validation = await validateSelectionForReplacement();
         if (!validation.valid) {
+          logValidation.fail('Selection validation for replacement', {
+            error: validation.error,
+            errorCode: validation.errorCode
+          });
           return createErrorResult(
             '',
             newText,
@@ -57,6 +70,7 @@ export async function replaceSelectedText(
             validation.errorCode || ReplacementErrorCode.INVALID_RANGE
           );
         }
+        logValidation.pass('Selection validation for replacement');
       }
 
       const range = context.document.getSelection();
@@ -126,7 +140,7 @@ export async function replaceSelectedText(
 
       await context.sync();
 
-      return {
+      const result: ReplacementResult = {
         success: true,
         originalText,
         newText,
@@ -138,8 +152,24 @@ export async function replaceSelectedText(
         newLength: newText.length,
         timestamp: Date.now(),
       };
+
+      logAsyncOperation.success('Replace selected text', {
+        originalLength,
+        newLength: newText.length,
+        location,
+        formattingPreserved: opts.preserveFormatting && !opts.useHtml
+      });
+
+      return result;
     } catch (error) {
-      console.error('Error replacing text:', error);
+      logAsyncOperation.failure(
+        'Replace selected text',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          newTextLength: newText.length,
+          options: opts
+        }
+      );
       return createErrorResult(
         '',
         newText,
@@ -280,10 +310,16 @@ export async function replaceTextInRange(
  * ```
  */
 export async function validateSelectionForReplacement(): Promise<ReplacementValidation> {
+  logger.debug('Validating selection for replacement');
+
   try {
     const metadata = await getSelectionMetadata();
 
     if (metadata.isEmpty) {
+      logValidation.fail('Selection validation', {
+        reason: 'Empty selection',
+        location: metadata.location
+      });
       return {
         valid: false,
         error: 'No text selected. Please select text to replace.',
@@ -297,6 +333,11 @@ export async function validateSelectionForReplacement(): Promise<ReplacementVali
       };
     }
 
+    logValidation.pass('Selection validation', {
+      location: metadata.location,
+      characterCount: metadata.characterCount
+    });
+
     return {
       valid: true,
       selectionInfo: {
@@ -307,7 +348,7 @@ export async function validateSelectionForReplacement(): Promise<ReplacementVali
       },
     };
   } catch (error) {
-    console.error('Error validating selection:', error);
+    logger.error('Error validating selection', error instanceof Error ? error : new Error(String(error)));
     return {
       valid: false,
       error: `Validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -330,6 +371,8 @@ export async function validateSelectionForReplacement(): Promise<ReplacementVali
  * ```
  */
 export async function getSelectionFormatting(): Promise<TextFormatting | undefined> {
+  logger.debug('Getting selection formatting');
+
   return Word.run(async (context) => {
     try {
       const range = context.document.getSelection();
@@ -350,7 +393,7 @@ export async function getSelectionFormatting(): Promise<TextFormatting | undefin
 
       await context.sync();
 
-      return {
+      const formatting: TextFormatting = {
         fontFamily: font.name,
         fontSize: font.size,
         fontColor: font.color,
@@ -362,8 +405,12 @@ export async function getSelectionFormatting(): Promise<TextFormatting | undefin
         subscript: font.subscript,
         superscript: font.superscript,
       };
+
+      logger.debug('Selection formatting retrieved', formatting);
+
+      return formatting;
     } catch (error) {
-      console.error('Error getting selection formatting:', error);
+      logger.error('Error getting selection formatting', error instanceof Error ? error : new Error(String(error)));
       return undefined;
     }
   });
@@ -472,6 +519,8 @@ async function applyFormatting(
   formatting: TextFormatting,
   context: Word.RequestContext
 ): Promise<void> {
+  logger.debug('Applying formatting to range', formatting);
+
   try {
     const font = range.font;
 
@@ -507,8 +556,9 @@ async function applyFormatting(
     }
 
     await context.sync();
+    logger.debug('Formatting applied successfully');
   } catch (error) {
-    console.error('Error applying formatting:', error);
+    logger.error('Error applying formatting', error instanceof Error ? error : new Error(String(error)), formatting);
     throw new Error(`Failed to apply formatting: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }

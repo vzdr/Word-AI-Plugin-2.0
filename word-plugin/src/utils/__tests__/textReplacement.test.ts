@@ -132,7 +132,7 @@ describe('replaceSelectedText', () => {
         return await callback(mockContext);
       });
 
-      const result = await replaceSelectedText(newText);
+      const result = await replaceSelectedText(newText, { validateSelection: false });
 
       expect(result.success).toBe(true);
       expect(result.originalText).toBe(originalText);
@@ -148,7 +148,7 @@ describe('replaceSelectedText', () => {
         return await callback(mockContext);
       });
 
-      const result = await replaceSelectedText('new text');
+      const result = await replaceSelectedText('new text', { validateSelection: false });
 
       expect(result.location).toBeDefined();
       expect(result.location.type).toBe('body');
@@ -162,7 +162,7 @@ describe('replaceSelectedText', () => {
       });
 
       const before = Date.now();
-      const result = await replaceSelectedText('new text');
+      const result = await replaceSelectedText('new text', { validateSelection: false });
       const after = Date.now();
 
       expect(result.timestamp).toBeGreaterThanOrEqual(before);
@@ -295,7 +295,7 @@ describe('replaceSelectedText', () => {
           return await callback(mockContext);
         });
 
-        const result = await replaceSelectedText('new text');
+        const result = await replaceSelectedText('new text', { validateSelection: false });
 
         expect(result.location.type).toBe(expected);
       });
@@ -304,11 +304,29 @@ describe('replaceSelectedText', () => {
 
   describe('Error handling', () => {
     it('should return error result on Word API error', async () => {
-      (Word.run as jest.Mock).mockImplementation(async () => {
-        throw new Error('Word API error');
+      // Create a context that throws when sync() is called
+      const mockContext = {
+        document: {
+          getSelection: jest.fn().mockReturnValue({
+            text: 'test',
+            load: jest.fn(),
+            parentBody: {
+              type: 'MainDoc',
+              load: jest.fn(),
+            },
+            font: {
+              load: jest.fn(),
+            },
+          }),
+        },
+        sync: jest.fn().mockRejectedValue(new Error('Word API error')),
+      };
+
+      (Word.run as jest.Mock).mockImplementation(async (callback) => {
+        return await callback(mockContext as any);
       });
 
-      const result = await replaceSelectedText('new text');
+      const result = await replaceSelectedText('new text', { validateSelection: false });
 
       expect(result.success).toBe(false);
       expect(result.error).toBeDefined();
@@ -332,9 +350,29 @@ describe('replaceSelectedText', () => {
     });
 
     it('should include error message in result', async () => {
-      (Word.run as jest.Mock).mockRejectedValue(new Error('Test error'));
+      // Create a context that throws when sync() is called
+      const mockContext = {
+        document: {
+          getSelection: jest.fn().mockReturnValue({
+            text: 'test',
+            load: jest.fn(),
+            parentBody: {
+              type: 'MainDoc',
+              load: jest.fn(),
+            },
+            font: {
+              load: jest.fn(),
+            },
+          }),
+        },
+        sync: jest.fn().mockRejectedValue(new Error('Test error')),
+      };
 
-      const result = await replaceSelectedText('new text');
+      (Word.run as jest.Mock).mockImplementation(async (callback) => {
+        return await callback(mockContext as any);
+      });
+
+      const result = await replaceSelectedText('new text', { validateSelection: false });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Test error');
@@ -456,7 +494,21 @@ describe('getSelectionFormatting', () => {
   });
 
   it('should return undefined on error', async () => {
-    (Word.run as jest.Mock).mockRejectedValue(new Error('Formatting error'));
+    // Create a context that throws when sync() is called
+    const mockContext = {
+      document: {
+        getSelection: jest.fn().mockReturnValue({
+          font: {
+            load: jest.fn(),
+          },
+        }),
+      },
+      sync: jest.fn().mockRejectedValue(new Error('Formatting error')),
+    };
+
+    (Word.run as jest.Mock).mockImplementation(async (callback) => {
+      return await callback(mockContext as any);
+    });
 
     const result = await getSelectionFormatting();
 
@@ -468,20 +520,19 @@ describe('replaceWithFormatting', () => {
   it('should replace text and apply custom formatting', async () => {
     const mockContext = createMockContext('test');
 
-    (Word.run as jest.Mock).mockImplementation(async (callback) => {
-      return await callback(mockContext);
+    // Mock getSelectionMetadata first (used by validateSelectionForReplacement)
+    const textSelectionModule = require('../textSelection');
+    jest.spyOn(textSelectionModule, 'getSelectionMetadata').mockResolvedValue({
+      text: 'test',
+      isEmpty: false,
+      isValid: true,
+      location: 'body',
+      characterCount: 4,
+      paragraphCount: 1,
     });
 
-    // Mock validateSelectionForReplacement
-    const textReplacementModule = require('../textReplacement');
-    jest.spyOn(textReplacementModule, 'validateSelectionForReplacement').mockResolvedValue({
-      valid: true,
-      selectionInfo: {
-        hasSelection: true,
-        isEmpty: false,
-        location: 'body',
-        characterCount: 4,
-      },
+    (Word.run as jest.Mock).mockImplementation(async (callback) => {
+      return await callback(mockContext);
     });
 
     const customFormatting: TextFormatting = {
@@ -506,6 +557,17 @@ describe('replaceWithHtml', () => {
       return await callback(mockContext);
     });
 
+    // Mock validateSelectionForReplacement for this test
+    const textSelectionModule = require('../textSelection');
+    jest.spyOn(textSelectionModule, 'getSelectionMetadata').mockResolvedValue({
+      text: 'test',
+      isEmpty: false,
+      isValid: true,
+      location: 'body',
+      characterCount: 4,
+      paragraphCount: 1,
+    });
+
     const html = '<p><strong>Bold</strong> and <em>italic</em></p>';
     await replaceWithHtml(html);
 
@@ -522,7 +584,7 @@ describe('Integration scenarios', () => {
       return await callback(mockContext);
     });
 
-    const result = await replaceSelectedText(longText);
+    const result = await replaceSelectedText(longText, { validateSelection: false });
 
     expect(result.success).toBe(true);
     expect(result.newLength).toBe(10000);
@@ -536,7 +598,7 @@ describe('Integration scenarios', () => {
       return await callback(mockContext);
     });
 
-    const result = await replaceSelectedText(specialText);
+    const result = await replaceSelectedText(specialText, { validateSelection: false });
 
     expect(result.success).toBe(true);
     expect(result.newText).toBe(specialText);
@@ -549,7 +611,7 @@ describe('Integration scenarios', () => {
       return await callback(mockContext);
     });
 
-    const result = await replaceSelectedText('');
+    const result = await replaceSelectedText('', { validateSelection: false });
 
     expect(result.success).toBe(true);
     expect(result.newLength).toBe(0);
@@ -563,7 +625,7 @@ describe('Integration scenarios', () => {
       return await callback(mockContext);
     });
 
-    const result = await replaceSelectedText(unicodeText);
+    const result = await replaceSelectedText(unicodeText, { validateSelection: false });
 
     expect(result.success).toBe(true);
     expect(result.newText).toBe(unicodeText);

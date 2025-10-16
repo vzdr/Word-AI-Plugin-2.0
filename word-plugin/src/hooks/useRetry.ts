@@ -110,7 +110,7 @@ export function useRetry<T>(
    * Execute async function with retry logic
    */
   const execute = useCallback(async (): Promise<T> => {
-    let lastError: Error;
+    let lastError: any;
 
     for (let attempt = 0; attempt < retryConfig.maxAttempts; attempt++) {
       try {
@@ -131,7 +131,7 @@ export function useRetry<T>(
 
         return result;
       } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
+        lastError = error;
 
         // Check if we should retry this error
         const shouldRetry = retryConfig.shouldRetry
