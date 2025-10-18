@@ -8,7 +8,13 @@
  * - Error handling
  */
 
-import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
+import { GoogleGenerativeAI, GenerativeModel, Part } from '@google/generative-ai';
+import { UploadedFile } from '../types/UploadedFile';
+
+// Override AIRequest to use UploadedFile array
+interface GeminiAIRequest extends Omit<AIRequest, 'contextFiles'> {
+  contextFiles: UploadedFile[];
+}
 import {
   AIRequest,
   AIResponse,
@@ -44,7 +50,7 @@ export class GeminiService {
   /**
    * Process an AI request and generate a response
    */
-  async processRequest(request: AIRequest): Promise<AIResponse> {
+  async processRequest(request: GeminiAIRequest): Promise<AIResponse> {
     const startTime = Date.now();
 
     try {
@@ -60,8 +66,26 @@ export class GeminiService {
       // Get model with system prompt
       const model = this.getModel(settings.model, prompt.system);
 
+      // Prepare parts for Gemini API
+      const parts: Part[] = [
+        { text: prompt.user },
+        ...request.contextFiles.map((file) => ({
+          inlineData: {
+            data: file.content,
+            mimeType: file.mimeType,
+          },
+        })),
+      ];
+
       // Call Gemini API
-      const result = await model.generateContent(prompt.user);
+      const result = await model.generateContent({
+        contents: [{ role: 'user', parts }],
+        generationConfig: {
+          temperature: settings.temperature,
+          maxOutputTokens: settings.maxTokens,
+          topP: settings.topP,
+        },
+      });
 
       const response = await result.response;
       const responseText = response.text();
@@ -70,7 +94,10 @@ export class GeminiService {
       const cleanedResponse = cleanResponse(responseText);
 
       // Extract sources from response
-      const sources = extractSources(cleanedResponse, request.contextFiles);
+      const sources = extractSources(
+        cleanedResponse,
+        request.contextFiles.map((f) => f.name)
+      );
 
       // Calculate response time
       const responseTime = (Date.now() - startTime) / 1000;
@@ -108,7 +135,7 @@ export class GeminiService {
   /**
    * Validate an AI request
    */
-  private validateRequest(request: AIRequest): void {
+  private validateRequest(request: GeminiAIRequest): void {
     if (!request.question || request.question.trim().length === 0) {
       throw new AIServiceError(
         'Question is required',

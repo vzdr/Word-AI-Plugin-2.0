@@ -23,7 +23,7 @@ export interface AISettings {
 export const DEFAULT_SETTINGS: AISettings = {
   model: 'gpt-3.5-turbo',
   temperature: 0.7,
-  maxTokens: 2000,
+  maxTokens: 4096,
 };
 
 /**
@@ -53,7 +53,7 @@ export const SETTINGS_CONSTRAINTS: SettingsConstraints = {
   },
   maxTokens: {
     min: 100,
-    max: 4000,
+    max: 8192,
   },
   allowedModels: ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo'],
 };

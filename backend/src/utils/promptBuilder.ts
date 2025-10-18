@@ -10,21 +10,11 @@ import { AIRequest, PromptTemplate, Source } from '../types/ai';
 /**
  * Default system prompt template
  */
-const DEFAULT_SYSTEM_PROMPT = `You are a helpful AI assistant analyzing documents and answering questions based on provided context.
+const CONTEXT_ONLY_SYSTEM_PROMPT = `You are a specialized assistant for answering questions based ONLY on the provided context from the attached files. Your task is to analyze the user's question and the content of the files.
 
-Your task is to:
-1. Carefully read and understand the provided context
-2. Answer the user's question based on the context
-3. Cite specific sources when making claims
-4. Be concise and accurate
-5. If the answer is not in the context, clearly state that
-
-Guidelines:
-- Always prioritize accuracy over speculation
-- When citing sources, reference them as [Source: filename]
-- If multiple sources support your answer, cite all of them
-- Maintain a professional and helpful tone
-- Format your response clearly and readably`;
+- If you can find the answer within the files, provide a comprehensive answer based exclusively on that information.
+- If the answer cannot be found in the provided files, you MUST respond with the exact phrase: "INFO NOT FOUND".
+- Do not use any external knowledge or information outside of the provided file content.`;
 
 const NO_CONTEXT_SYSTEM_PROMPT = `You are a helpful AI assistant. Please answer the user's question accurately and concisely.`;
 
@@ -41,19 +31,14 @@ export function buildPrompt(request: AIRequest): PromptTemplate {
     };
   }
 
-  // Build the context section
-  const contextSection = buildContextSection(contextFiles, inlineContext);
-
-  // Check if there is any meaningful context
-  const hasContext = contextSection.trim().length > 0 && !contextSection.includes('NO CONTEXT PROVIDED');
+  // Check if there are context files
+  const hasContext = contextFiles && contextFiles.length > 0;
 
   // Choose system prompt based on context
-  const systemPrompt = hasContext ? DEFAULT_SYSTEM_PROMPT : NO_CONTEXT_SYSTEM_PROMPT;
+  const systemPrompt = hasContext ? CONTEXT_ONLY_SYSTEM_PROMPT : NO_CONTEXT_SYSTEM_PROMPT;
 
   // Build the user message
-  const userMessage = hasContext
-    ? `${contextSection}\n\nUser Question: ${question}\n\nPlease provide a comprehensive answer based on the context provided above. Remember to cite your sources.`
-    : `User Question: ${question}`;
+  const userMessage = `User Question: ${question}`;
 
   return {
     system: systemPrompt,

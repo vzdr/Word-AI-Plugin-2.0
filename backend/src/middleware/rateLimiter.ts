@@ -35,20 +35,11 @@ const userKeyGenerator = (req: Request): string => {
     return `user:${userId}`;
   }
 
-  // Fallback to IP address
-  const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  rateLimitStats.recordRequest(`ip:${ip}`);
-  return `ip:${ip}`;
+  // Fallback for unauthenticated users
+  rateLimitStats.recordRequest('unauthenticated-user');
+  return 'unauthenticated-user';
 };
 
-/**
- * IP-based key generator
- */
-const ipKeyGenerator = (req: Request): string => {
-  const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  rateLimitStats.recordRequest(`ip:${ip}`);
-  return `ip:${ip}`;
-};
 
 /**
  * Global key generator (applies to all requests)
@@ -105,7 +96,7 @@ function createRateLimiter(
     legacyHeaders: config.legacyHeaders,
     skipSuccessfulRequests: config.skipSuccessfulRequests,
     skipFailedRequests: config.skipFailedRequests,
-    keyGenerator: keyGenerator || ipKeyGenerator,
+    keyGenerator: keyGenerator,
     handler: rateLimitHandler,
   });
 }
@@ -121,7 +112,7 @@ export const userRateLimiter = createRateLimiter(
 /**
  * Per-IP rate limiter: 100 requests per hour
  */
-export const ipRateLimiter = createRateLimiter(perIpRateLimit, ipKeyGenerator);
+export const ipRateLimiter = createRateLimiter(perIpRateLimit);
 
 /**
  * Global rate limiter: 1000 requests per hour
@@ -150,10 +141,7 @@ export const aiQueryRateLimiter = createRateLimiter(
 /**
  * Default rate limiter: 30 requests per 15 minutes
  */
-export const defaultRateLimiter = createRateLimiter(
-  defaultRateLimit,
-  ipKeyGenerator
-);
+export const defaultRateLimiter = createRateLimiter(defaultRateLimit);
 
 /**
  * Combined rate limiter middleware

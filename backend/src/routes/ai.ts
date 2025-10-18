@@ -4,6 +4,7 @@
  */
 
 import { Router, Request, Response } from 'express';
+import { Part } from '@google/generative-ai';
 import { body, validationResult } from 'express-validator';
 import multer from 'multer';
 import { createOpenAIService } from '../services/openai';
@@ -49,10 +50,10 @@ router.post(
         prompt = `Context: ${inlineContext}\n\nQuestion: ${selectedText}`;
       }
 
-      // Prepare context files
       const contextFiles: UploadedFile[] = files.map((file) => ({
         name: file.originalname,
         content: file.buffer.toString('base64'),
+        mimeType: file.mimetype,
       }));
 
       // Initialize AI service based on provider
@@ -107,5 +108,52 @@ router.post(
     }
   }
 );
+
+router.get('/test-gemini', async (req: Request, res: Response) => {
+  console.log('[Test Route] Received request. Initializing Gemini service...');
+  try {
+    const gemini = createGeminiService(config.gemini.apiKey);
+    const model = gemini['getModel']('gemini-1.0-pro'); // Accessing private method for test
+
+    console.log('[Test Route] Gemini service initialized. Preparing parts...');
+
+    // Create a fake file part (inlineData)
+    const fakeFilePart = {
+      inlineData: {
+        data: Buffer.from("This is the content of a fake file.").toString('base64'),
+        mimeType: 'text/plain',
+      },
+    };
+
+    const textPart = {
+      text: "What is in the provided file?",
+    };
+
+    const parts: Part[] = [textPart, fakeFilePart];
+
+    console.log('[Test Route] Parts prepared. Calling generateContent...');
+
+    // Set a shorter timeout for the test
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Test request timed out after 30 seconds')), 30000)
+    );
+
+    const generatePromise = model.generateContent({
+      contents: [{ role: 'user', parts }],
+    });
+
+    const result = await Promise.race([generatePromise, timeoutPromise]);
+
+    // @ts-ignore
+    const responseText = await result.response.text();
+
+    console.log('[Test Route] Successfully received response from Gemini:', responseText);
+    res.status(200).json({ success: true, response: responseText });
+
+  } catch (error: any) {
+    console.error('[Test Route] An error occurred:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 export default router;
