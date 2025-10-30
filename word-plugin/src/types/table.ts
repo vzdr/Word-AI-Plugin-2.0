@@ -111,6 +111,27 @@ export interface CellInfo {
 }
 
 /**
+ * Header configuration for a table
+ * Describes which types of headers are present
+ */
+export interface HeaderConfig {
+  /**
+   * Whether the table has column headers (top row)
+   */
+  hasColumnHeaders: boolean;
+
+  /**
+   * Whether the table has row headers (left column)
+   */
+  hasRowHeaders: boolean;
+
+  /**
+   * Type of headers present in the table
+   */
+  type: 'none' | 'column' | 'row' | 'both';
+}
+
+/**
  * Complete table structure with all cells
  */
 export interface TableStructure {
@@ -130,9 +151,25 @@ export interface TableStructure {
   cellsFlat: CellInfo[];
 
   /**
-   * Column headers if detected
+   * Header configuration describing which headers are present
+   */
+  headerConfig: HeaderConfig;
+
+  /**
+   * Column headers if detected (first row)
+   * @deprecated Use headerConfig and columnHeaders instead
    */
   headers?: string[];
+
+  /**
+   * Column headers (horizontal headers from top row)
+   */
+  columnHeaders?: string[];
+
+  /**
+   * Row headers (vertical headers from left column)
+   */
+  rowHeaders?: string[];
 
   /**
    * Merged cell information

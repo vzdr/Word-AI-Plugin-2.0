@@ -31,9 +31,25 @@ export interface CellContext {
   originalContent?: string;
 
   /**
-   * Column header text (if table has headers)
+   * Column header text (horizontal header from top row)
    */
   columnHeader?: string;
+
+  /**
+   * Row header text (vertical header from left column)
+   */
+  rowHeader?: string;
+
+  /**
+   * Derived purpose of the cell based on headers
+   * e.g., "Mass in December" from columnHeader="Mass" and rowHeader="December"
+   */
+  cellPurpose?: string;
+
+  /**
+   * Whether this cell is in a header row
+   */
+  isHeaderCell?: boolean;
 
   /**
    * Text from cells in the same row
@@ -222,9 +238,111 @@ export interface BatchCellGenerationResult {
 }
 
 /**
+ * Build an intelligent AI prompt based on cell context and header configuration
+ *
+ * Creates context-aware prompts that adapt to different header scenarios:
+ * - Both headers: Uses combined purpose (e.g., "Mass in December")
+ * - One header: Uses single header context
+ * - No headers: Expects cell to contain self-describing question
+ *
+ * @param cellContext - Context for the specific cell
+ * @param tableContext - Context for the entire table
+ * @param userContext - Optional user-provided context
+ * @returns Structured prompt for AI generation
+ *
+ * @internal
+ */
+function buildCellPrompt(
+  cellContext: CellContext,
+  tableContext: TableContext,
+  userContext?: string
+): { systemPrompt: string; userPrompt: string } {
+  const { originalContent, cellPurpose, columnHeader, rowHeader, rowContext, adjacentCells } = cellContext;
+
+  // Skip header cells - they should not be filled
+  if (cellContext.isHeaderCell) {
+    return {
+      systemPrompt: 'You are a table cell content generator.',
+      userPrompt: originalContent || '',
+    };
+  }
+
+  // Build system prompt based on header configuration
+  let systemPrompt = `You are an intelligent table cell content generator. Your task is to generate appropriate content for a table cell based on the provided context.
+
+IMPORTANT RULES:
+1. Return ONLY the cell content - no explanations, no preamble, no formatting
+2. Keep responses concise and appropriate for a table cell
+3. If the cell already contains content, analyze it:
+   - If it's a mathematical expression ending with '=?', calculate and return the result
+   - If it's a complete answer, return it unchanged
+   - If it's a question or prompt, generate an appropriate answer
+4. Use the provided context to generate relevant, accurate content
+5. Do not use markdown, bullets, or multi-line responses unless absolutely necessary`;
+
+  // Build user prompt based on header configuration
+  let userPrompt = '';
+
+  if (cellPurpose) {
+    // We have headers - use the derived purpose
+    userPrompt += `Cell Purpose: Generate content for "${cellPurpose}"\n\n`;
+
+    if (columnHeader && rowHeader) {
+      userPrompt += `Context:\n`;
+      userPrompt += `- Column: ${columnHeader}\n`;
+      userPrompt += `- Row: ${rowHeader}\n`;
+    } else if (columnHeader) {
+      userPrompt += `Column Header: ${columnHeader}\n`;
+    } else if (rowHeader) {
+      userPrompt += `Row Header: ${rowHeader}\n`;
+    }
+
+    // Add surrounding context
+    if (adjacentCells.left) {
+      userPrompt += `- Left cell: ${adjacentCells.left}\n`;
+    }
+    if (adjacentCells.top) {
+      userPrompt += `- Above cell: ${adjacentCells.top}\n`;
+    }
+
+    // Add row context if available
+    const nonEmptyRowContext = rowContext.filter(c => c && c.trim().length > 0);
+    if (nonEmptyRowContext.length > 0) {
+      userPrompt += `- Other cells in this row: ${nonEmptyRowContext.join(', ')}\n`;
+    }
+  } else {
+    // No headers - cell content must be self-descriptive
+    userPrompt += `Note: This table has no headers. The cell content should be self-describing.\n\n`;
+
+    if (originalContent && originalContent.trim().length > 0) {
+      userPrompt += `Cell Content: "${originalContent}"\n`;
+      userPrompt += `Task: Analyze the cell content. If it's a question or prompt, provide an appropriate answer. If it's a mathematical expression ending with '=?', calculate and return only the numerical result.\n`;
+    } else {
+      userPrompt += `The cell is empty. Without headers or context, cannot generate content.\n`;
+      userPrompt += `Please ensure cells in tables without headers contain clear questions or prompts.\n`;
+    }
+  }
+
+  // Add user-provided context if available
+  if (userContext && userContext.trim().length > 0) {
+    userPrompt += `\nAdditional Context: ${userContext}\n`;
+  }
+
+  // Add the actual cell content to process
+  if (originalContent && originalContent.trim().length > 0) {
+    userPrompt += `\nCell Content to Process: "${originalContent}"\n`;
+  }
+
+  userPrompt += `\nGenerate the appropriate cell content now:`;
+
+  return { systemPrompt, userPrompt };
+}
+
+/**
  * Generate content for a single table cell using AI
  *
  * Builds a context-aware prompt using cell position, headers, and adjacent cells
+ * Adapts intelligently to different header configurations
  * Calls the AI service to generate appropriate content
  *
  * @param cellContext - Context for the specific cell
@@ -252,19 +370,22 @@ export async function generateCellContent(
   userContext?: string
 ): Promise<CellGenerationResult> {
   try {
-    const systemPrompt = `
-    You are a table cell processor. You will be given the content of a single table cell. Your task is to return the processed content for that cell based on the following rules:
-    1. If the cell content is a mathematical expression ending with \'=?\', you MUST return only the numerical result of the calculation.
-    2. If the cell content is an empty string, you MUST return an empty string.
-    3. If the cell content is anything else, you MUST return the original content unchanged.
-    Do not provide any explanation, preamble, or formatting. Return only the processed cell content.
-    `;
+    // Skip if this is a header cell
+    if (cellContext.isHeaderCell) {
+      return {
+        success: false,
+        error: 'Cannot fill header cells',
+        rowIndex: cellContext.rowIndex,
+        colIndex: cellContext.colIndex,
+      };
+    }
 
-    const selectedText = cellContext.originalContent || '';
+    // Build intelligent prompt based on context
+    const { systemPrompt, userPrompt } = buildCellPrompt(cellContext, tableContext, userContext);
 
     // Call AI service
     const response = await askAI(
-      selectedText,
+      userPrompt,
       systemPrompt,
       [], // No files for table generation
       settings

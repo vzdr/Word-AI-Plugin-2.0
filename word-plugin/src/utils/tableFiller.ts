@@ -517,7 +517,8 @@ export async function previewFillChanges(
  * Build context for a single cell
  *
  * Extracts relevant context from surrounding cells for AI generation
- * Includes header, row data, column data, and adjacent cells
+ * Intelligently uses both horizontal and vertical headers when available
+ * Derives cell purpose from header combination
  *
  * @param cell - Cell to build context for
  * @param table - Complete table structure
@@ -526,7 +527,9 @@ export async function previewFillChanges(
  * @example
  * ```typescript
  * const cellContext = buildCellContext(cell, tableStructure);
- * // Returns context with headers, row data, adjacent cells, etc.
+ * // With both headers: cellPurpose = "Mass in December"
+ * // With column header only: cellPurpose = "Mass"
+ * // With no headers: cellPurpose = undefined (cell should contain question)
  * ```
  */
 export function buildCellContext(
@@ -534,19 +537,50 @@ export function buildCellContext(
   table: TableStructure
 ): CellContext {
   const { rowIndex, colIndex, text } = cell;
-  const { cells, headers } = table;
+  const { cells, columnHeaders, rowHeaders, headerConfig } = table;
 
-  // Get column header
-  const columnHeader = headers ? headers[colIndex] : undefined;
+  // Determine if this cell is in a header row or column
+  const isInHeaderRow = headerConfig.hasColumnHeaders && rowIndex === 0;
+  const isInHeaderColumn = headerConfig.hasRowHeaders && colIndex === 0;
+  const isHeaderCell = isInHeaderRow || isInHeaderColumn;
 
-  // Get row context (other cells in same row)
+  // Get column header (horizontal header from top row)
+  let columnHeader: string | undefined;
+  if (headerConfig.hasColumnHeaders && columnHeaders && colIndex < columnHeaders.length) {
+    columnHeader = columnHeaders[colIndex];
+  }
+
+  // Get row header (vertical header from left column)
+  let rowHeader: string | undefined;
+  if (headerConfig.hasRowHeaders && rowHeaders && rowIndex < rowHeaders.length) {
+    rowHeader = rowHeaders[rowIndex];
+  }
+
+  // Derive cell purpose based on headers
+  let cellPurpose: string | undefined;
+  if (columnHeader && rowHeader) {
+    // Both headers: combine them to describe what the cell should contain
+    // e.g., "Mass" + "December" => "Mass in December"
+    cellPurpose = buildCellPurposeFromHeaders(columnHeader, rowHeader);
+  } else if (columnHeader) {
+    // Only column header: use it as the purpose
+    cellPurpose = columnHeader;
+  } else if (rowHeader) {
+    // Only row header: use it as the purpose
+    cellPurpose = rowHeader;
+  }
+  // If no headers, cellPurpose remains undefined - cell must be self-descriptive
+
+  // Get row context (other cells in same row, excluding headers and current cell)
+  const rowStartIdx = headerConfig.hasRowHeaders ? 1 : 0;
   const rowContext = cells[rowIndex]
-    .filter((c, idx) => idx !== colIndex)
+    .filter((c, idx) => idx >= rowStartIdx && idx !== colIndex)
     .map((c) => c.text);
 
-  // Get column context (other cells in same column, excluding this one)
+  // Get column context (other cells in same column, excluding headers and current cell)
+  const colStartIdx = headerConfig.hasColumnHeaders ? 1 : 0;
   const columnContext = cells
-    .filter((_, idx) => idx !== rowIndex)
+    .filter((_, idx) => idx >= colStartIdx && idx !== rowIndex)
     .map((row) => row[colIndex]?.text || '')
     .filter((text) => text.trim().length > 0);
 
@@ -574,10 +608,66 @@ export function buildCellContext(
     colIndex,
     originalContent: text,
     columnHeader,
+    rowHeader,
+    cellPurpose,
+    isHeaderCell,
     rowContext,
     columnContext,
     adjacentCells,
   };
+}
+
+/**
+ * Build a descriptive cell purpose from column and row headers
+ *
+ * Intelligently combines headers to create a natural description
+ * of what the cell should contain
+ *
+ * @param columnHeader - Header from top row
+ * @param rowHeader - Header from left column
+ * @returns Descriptive purpose string
+ *
+ * @internal
+ *
+ * @example
+ * ```typescript
+ * buildCellPurposeFromHeaders("Mass", "December") => "Mass in December"
+ * buildCellPurposeFromHeaders("Temperature", "Morning") => "Temperature in the Morning"
+ * buildCellPurposeFromHeaders("Price", "Product A") => "Price of Product A"
+ * ```
+ */
+function buildCellPurposeFromHeaders(columnHeader: string, rowHeader: string): string {
+  // Clean headers
+  const col = columnHeader.trim();
+  const row = rowHeader.trim();
+
+  if (!col || !row) {
+    return col || row || 'Unknown';
+  }
+
+  // Try to intelligently combine headers
+  // Use different prepositions based on common patterns
+
+  // Time/Date patterns
+  const timePatterns = /^(january|february|march|april|may|june|july|august|september|october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday|morning|afternoon|evening|night|week|month|year|q1|q2|q3|q4)/i;
+  if (timePatterns.test(row)) {
+    return `${col} in ${row}`;
+  }
+
+  // Location patterns
+  const locationPatterns = /^(north|south|east|west|city|country|state|region|area|zone)/i;
+  if (locationPatterns.test(row)) {
+    return `${col} in ${row}`;
+  }
+
+  // Entity patterns (product, person, company, etc.)
+  const entityPatterns = /^(product|item|person|employee|customer|company|organization|department)/i;
+  if (entityPatterns.test(row)) {
+    return `${col} of ${row}`;
+  }
+
+  // Default: use "for"
+  return `${col} for ${row}`;
 }
 
 /**
@@ -614,7 +704,7 @@ function buildTableContext(
  * Filters cells based on:
  * - Empty/filled status
  * - Target rows/columns
- * - Header inclusion
+ * - Header inclusion (now properly handles both row and column headers)
  * - Max cells limit
  * - Merged cells
  *
@@ -628,6 +718,7 @@ function getCellsToFill(
   table: TableStructure,
   options: Required<AutoFillOptions>
 ): CellInfo[] {
+  const { headerConfig } = table;
   let cellsToFill = table.cellsFlat;
 
   // Filter by empty status
@@ -635,9 +726,14 @@ function getCellsToFill(
     cellsToFill = cellsToFill.filter((cell) => cell.isEmpty);
   }
 
-  // Filter by header
-  if (!options.includeHeaders && table.info.hasHeaders) {
-    cellsToFill = cellsToFill.filter((cell) => cell.rowIndex > 0);
+  // IMPORTANT: Filter out header cells unless explicitly requested
+  // This handles both column headers (row 0) and row headers (column 0)
+  if (!options.includeHeaders) {
+    cellsToFill = cellsToFill.filter((cell) => {
+      const isInHeaderRow = headerConfig.hasColumnHeaders && cell.rowIndex === 0;
+      const isInHeaderColumn = headerConfig.hasRowHeaders && cell.colIndex === 0;
+      return !isInHeaderRow && !isInHeaderColumn;
+    });
   }
 
   // Filter by target rows
@@ -675,6 +771,7 @@ function getCellsToFill(
  * - Target cells exist
  * - No conflicts with protected cells
  * - Not exceeding limits
+ * - Proper header configuration for effective AI generation
  *
  * @param table - Table structure
  * @param cells - Cells to fill (empty for auto-detect)
@@ -713,11 +810,45 @@ export function validateFillOperation(
     };
   }
 
+  // Check header configuration and provide appropriate warnings
+  const { headerConfig } = table;
+  if (headerConfig.type === 'none') {
+    warnings.push(
+      'Table has no headers detected. For best results, cells should contain clear questions or prompts that describe what content is needed.'
+    );
+  } else if (headerConfig.type === 'both') {
+    // Ideal scenario - no warning needed
+    console.log('Table has both row and column headers - optimal for AI generation');
+  } else if (headerConfig.type === 'column') {
+    warnings.push(
+      'Table has only column headers. AI will use column context for generation.'
+    );
+  } else if (headerConfig.type === 'row') {
+    warnings.push(
+      'Table has only row headers. AI will use row context for generation.'
+    );
+  }
+
   // Check if we have cells to fill
   const cellsToFill = cells.length > 0 ? cells : getCellsToFill(table, opts);
 
   if (cellsToFill.length === 0) {
     warnings.push('No cells to fill based on current options');
+  }
+
+  // For tables without headers, validate that cells contain content to process
+  if (headerConfig.type === 'none' && cellsToFill.length > 0) {
+    const emptyCellsWithoutContext = cellsToFill.filter(
+      cell => cell.isEmpty || cell.text.trim().length === 0
+    );
+
+    if (emptyCellsWithoutContext.length > 0) {
+      warnings.push(
+        `${emptyCellsWithoutContext.length} cells are empty and table has no headers. ` +
+        'Empty cells without headers cannot be filled intelligently. ' +
+        'Consider adding headers or filling cells with questions/prompts first.'
+      );
+    }
   }
 
   // Validate target rows

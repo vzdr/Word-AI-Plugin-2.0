@@ -390,10 +390,35 @@ export async function parseTableStructure(
         cells.push(cellRow);
       }
 
-      // Get headers if table has them
-      const headers = tableInfo.hasHeaders
-        ? await getTableHeaders(wordTable, context)
-        : undefined;
+      // Detect column headers (horizontal headers from top row)
+      const columnHeaderResult = await detectColumnHeaders(wordTable, context);
+      const hasColumnHeaders = columnHeaderResult.hasHeaders;
+      const columnHeaders = columnHeaderResult.headers;
+
+      // Detect row headers (vertical headers from left column)
+      const rowHeaderResult = await detectRowHeaders(wordTable, context);
+      const hasRowHeaders = rowHeaderResult.hasHeaders;
+      const rowHeaders = rowHeaderResult.headers;
+
+      // Determine header configuration type
+      let headerType: 'none' | 'column' | 'row' | 'both' = 'none';
+      if (hasColumnHeaders && hasRowHeaders) {
+        headerType = 'both';
+      } else if (hasColumnHeaders) {
+        headerType = 'column';
+      } else if (hasRowHeaders) {
+        headerType = 'row';
+      }
+
+      // Create header configuration
+      const headerConfig = {
+        hasColumnHeaders,
+        hasRowHeaders,
+        type: headerType,
+      };
+
+      // Legacy support: keep the old 'headers' field for backward compatibility
+      const headers = hasColumnHeaders ? columnHeaders : undefined;
 
       // Detect merged cells if requested
       const mergedCells = detectMerged
@@ -409,7 +434,10 @@ export async function parseTableStructure(
         info: tableInfo,
         cells,
         cellsFlat,
-        headers,
+        headerConfig,
+        headers, // Legacy field
+        columnHeaders,
+        rowHeaders,
         mergedCells,
         nestedTables,
       };
@@ -543,6 +571,146 @@ async function getTableHeadersFromTable(
   } catch (error) {
     console.error('Error getting table headers:', error);
     return [];
+  }
+}
+
+/**
+ * Detect column headers (horizontal headers from top row)
+ * Uses heuristics to determine if first row contains headers
+ *
+ * @param table - Word.Table to analyze
+ * @param context - Request context
+ * @returns Object with detection result and headers if found
+ *
+ * @internal
+ */
+async function detectColumnHeaders(
+  table: Word.Table,
+  context: Word.RequestContext
+): Promise<{ hasHeaders: boolean; headers?: string[] }> {
+  try {
+    table.load('values');
+    await context.sync();
+
+    if (table.values.length === 0) {
+      return { hasHeaders: false };
+    }
+
+    const columnCount = table.values[0].length;
+    const headers: string[] = [];
+    let boldCount = 0;
+    let nonEmptyCount = 0;
+
+    // Check first row cells
+    for (let col = 0; col < columnCount; col++) {
+      const cell = table.getCell(0, col);
+      cell.load(['body/text', 'body/font/bold']);
+      await context.sync();
+
+      const text = cell.body.text.trim();
+      headers.push(text);
+
+      if (text.length > 0) {
+        nonEmptyCount++;
+      }
+
+      if (cell.body.font.bold) {
+        boldCount++;
+      }
+    }
+
+    // Heuristic 1: If most cells in first row are bold, it's likely headers
+    const boldPercentage = columnCount > 0 ? boldCount / columnCount : 0;
+
+    // Heuristic 2: Headers are usually short and non-empty
+    const allHeadersAreShort = headers.every(h => h.length === 0 || h.length < 50);
+
+    // Heuristic 3: At least half of the headers should be non-empty
+    const nonEmptyPercentage = columnCount > 0 ? nonEmptyCount / columnCount : 0;
+
+    const hasHeaders = (
+      (boldPercentage >= 0.5) || // Most are bold
+      (allHeadersAreShort && nonEmptyPercentage >= 0.5) // Short and mostly filled
+    );
+
+    if (hasHeaders) {
+      return { hasHeaders: true, headers };
+    }
+
+    return { hasHeaders: false };
+  } catch (error) {
+    console.error('Error detecting column headers:', error);
+    return { hasHeaders: false };
+  }
+}
+
+/**
+ * Detect row headers (vertical headers from left column)
+ * Uses heuristics to determine if first column contains headers
+ *
+ * @param table - Word.Table to analyze
+ * @param context - Request context
+ * @returns Object with detection result and headers if found
+ *
+ * @internal
+ */
+async function detectRowHeaders(
+  table: Word.Table,
+  context: Word.RequestContext
+): Promise<{ hasHeaders: boolean; headers?: string[] }> {
+  try {
+    table.load('values');
+    await context.sync();
+
+    if (table.values.length === 0) {
+      return { hasHeaders: false };
+    }
+
+    const rowCount = table.values.length;
+    const headers: string[] = [];
+    let boldCount = 0;
+    let nonEmptyCount = 0;
+
+    // Check first column cells
+    for (let row = 0; row < rowCount; row++) {
+      const cell = table.getCell(row, 0);
+      cell.load(['body/text', 'body/font/bold']);
+      await context.sync();
+
+      const text = cell.body.text.trim();
+      headers.push(text);
+
+      if (text.length > 0) {
+        nonEmptyCount++;
+      }
+
+      if (cell.body.font.bold) {
+        boldCount++;
+      }
+    }
+
+    // Heuristic 1: If most cells in first column are bold, it's likely headers
+    const boldPercentage = rowCount > 0 ? boldCount / rowCount : 0;
+
+    // Heuristic 2: Headers are usually short and non-empty
+    const allHeadersAreShort = headers.every(h => h.length === 0 || h.length < 50);
+
+    // Heuristic 3: At least half of the headers should be non-empty
+    const nonEmptyPercentage = rowCount > 0 ? nonEmptyCount / rowCount : 0;
+
+    const hasHeaders = (
+      (boldPercentage >= 0.5) || // Most are bold
+      (allHeadersAreShort && nonEmptyPercentage >= 0.5) // Short and mostly filled
+    );
+
+    if (hasHeaders) {
+      return { hasHeaders: true, headers };
+    }
+
+    return { hasHeaders: false };
+  } catch (error) {
+    console.error('Error detecting row headers:', error);
+    return { hasHeaders: false };
   }
 }
 
