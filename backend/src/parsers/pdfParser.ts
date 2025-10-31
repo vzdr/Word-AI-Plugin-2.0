@@ -4,7 +4,7 @@
  * Parses PDF files and extracts text content and metadata
  */
 
-import * as pdfParse from 'pdf-parse';
+import pdfParse from 'pdf-parse';
 import { BaseParser } from './base';
 import {
   FileType,
@@ -16,7 +16,6 @@ import {
   FileCorruptedError,
   PasswordProtectedError,
   ExtractionError,
-  ErrorCode,
 } from '../types/errors';
 import { chunkText } from '../utils/textChunker';
 
@@ -50,7 +49,7 @@ export class PdfParser extends BaseParser {
       const opts = this.mergeOptions(options);
 
       // Parse PDF
-      let pdfData: pdfParse.Result;
+      let pdfData: any;
       try {
         pdfData = await pdfParse(buffer);
       } catch (error) {

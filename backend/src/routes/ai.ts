@@ -1,6 +1,8 @@
 /**
  * AI Query Route
  * POST /api/ai/query
+ *
+ * Now supports RAG (Retrieval-Augmented Generation) when files are uploaded
  */
 
 import { Router, Request, Response } from 'express';
@@ -11,6 +13,7 @@ import { createOpenAIService } from '../services/openai';
 import { createGeminiService } from '../services/gemini';
 import config from '../config/env';
 import { UploadedFile } from '../types/UploadedFile';
+import { createRAGService, RAGRequest } from '../services/rag';
 
 const router = Router();
 
@@ -22,6 +25,7 @@ const upload = multer({
 
 /**
  * POST /api/ai/query
+ * Supports both regular AI queries and RAG-enhanced queries with uploaded files
  */
 router.post(
   '/query',
@@ -44,48 +48,153 @@ router.post(
       const settings = JSON.parse(req.body.settings);
       const files = req.files as Express.Multer.File[];
 
-      // Build prompt
-      let prompt = selectedText;
-      if (inlineContext) {
-        prompt = `Context: ${inlineContext}\n\nQuestion: ${selectedText}`;
-      }
-
       const contextFiles: UploadedFile[] = files.map((file) => ({
         name: file.originalname,
         content: file.buffer.toString('base64'),
         mimeType: file.mimetype,
       }));
 
-      // Initialize AI service based on provider
-      let completion;
       const startTime = Date.now();
 
-      if (config.aiProvider === 'gemini') {
-        // Use Gemini
-        const gemini = createGeminiService(config.gemini.apiKey);
-        completion = await gemini.processRequest({
-          question: prompt,
-          contextFiles,
-          inlineContext,
-          settings,
+      // Determine if we should use RAG (if files are uploaded and query is not a table operation)
+      let useRAG = contextFiles.length > 0 && !inlineContext.includes('You are a table cell processor');
+
+      let completion;
+      let ragMetrics;
+      let ragSources;
+
+      if (useRAG) {
+        console.log(`[AI Query] Using RAG with ${contextFiles.length} files`);
+
+        // Initialize RAG service
+        const apiKey = config.aiProvider === 'gemini' ? config.gemini.apiKey : config.openai.apiKey;
+        const ragService = createRAGService(apiKey, {
+          topK: 5,
+          minSimilarity: 0.3,
+          chunkSize: 600,
+          chunkOverlap: 100,
         });
-      } else {
-        // Use OpenAI
-        const openai = createOpenAIService(config.openai.apiKey);
-        completion = await openai.processRequest({
-          question: prompt,
-          contextFiles,
-          inlineContext,
-          settings,
-        });
+
+        try {
+          // Index files
+          await ragService.indexFiles(contextFiles);
+
+          // Execute RAG query
+          const ragRequest: RAGRequest = {
+            query: selectedText,
+            documents: [],
+            inlineContext,
+            config: {
+              topK: 5,
+              minSimilarity: 0.3,
+            },
+            modelSettings: settings,
+          };
+
+          const ragResponse = await ragService.query(ragRequest);
+
+          // Build augmented context with retrieved chunks
+          const augmentedContext = (ragService as any).pipeline.buildContext(
+            ragResponse.retrievedChunks,
+            inlineContext
+          );
+
+          console.log(`[AI Query] RAG retrieved ${ragResponse.retrievedChunks.length} chunks`);
+
+          // Build prompt with RAG context
+          const systemPrompt = contextFiles.length > 0
+            ? `You are a specialized assistant for answering questions based ONLY on the provided context from the attached files. Your task is to analyze the user's question and the content of the files.
+
+- If you can find the answer within the files, provide a comprehensive answer based exclusively on that information.
+- If the answer cannot be found in the provided files, you MUST respond with the exact phrase: "INFO NOT FOUND".
+- Do not use any external knowledge or information outside of the provided file content.`
+            : `You are a helpful AI assistant. Please answer the user's question accurately and concisely.`;
+
+          const userPrompt = `${augmentedContext}\n\nUser Question: ${selectedText}`;
+
+          // Generate response using AI service
+          if (config.aiProvider === 'gemini') {
+            const gemini = createGeminiService(config.gemini.apiKey);
+            completion = await gemini.processRequest({
+              question: userPrompt,
+              contextFiles: [], // Context already in prompt
+              inlineContext: systemPrompt,
+              settings,
+            });
+          } else {
+            const openai = createOpenAIService(config.openai.apiKey);
+            completion = await openai.processRequest({
+              question: userPrompt,
+              contextFiles: [], // Context already in prompt
+              inlineContext: systemPrompt,
+              settings,
+            });
+          }
+
+          // Add RAG metadata
+          ragMetrics = ragResponse.metrics;
+          ragSources = ragResponse.sources;
+
+          // Clean up
+          await ragService.clear();
+        } catch (ragError: any) {
+          console.error('[AI Query] RAG error, falling back to non-RAG:', ragError);
+          // Fall back to non-RAG processing
+          useRAG = false;
+        }
       }
 
-      return res.json({
+      if (!useRAG) {
+        console.log('[AI Query] Using standard AI processing');
+
+        // Build prompt
+        let prompt = selectedText;
+        if (inlineContext) {
+          prompt = `Context: ${inlineContext}\n\nQuestion: ${selectedText}`;
+        }
+
+        // Initialize AI service based on provider
+        if (config.aiProvider === 'gemini') {
+          const gemini = createGeminiService(config.gemini.apiKey);
+          completion = await gemini.processRequest({
+            question: prompt,
+            contextFiles,
+            inlineContext,
+            settings,
+          });
+        } else {
+          const openai = createOpenAIService(config.openai.apiKey);
+          completion = await openai.processRequest({
+            question: prompt,
+            contextFiles,
+            inlineContext,
+            settings,
+          });
+        }
+      }
+
+      // Ensure completion is defined
+      if (!completion) {
+        throw new Error('Failed to generate completion');
+      }
+
+      const responsePayload: any = {
         response: completion.answer,
         model: settings.model,
-        usage: completion.usage,
+        usage: (completion as any).usage,
         processingTime: Date.now() - startTime,
-      });
+      };
+
+      // Add RAG metadata if available
+      if (useRAG && ragMetrics) {
+        responsePayload.rag = {
+          enabled: true,
+          metrics: ragMetrics,
+          sources: ragSources,
+        };
+      }
+
+      return res.json(responsePayload);
     } catch (error: any) {
       console.error('[AI Query] Error details:', {
         message: error.message,
